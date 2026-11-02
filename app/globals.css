@@ -167,3 +167,10 @@
     @apply font-sans;
   }
 }
+/* Centred page column used by the headers and page layouts. */
+@utility container {
+  margin-inline: auto;
+  padding-inline: 1rem;
+  width: 100%;
+  max-width: 1280px;
+}
