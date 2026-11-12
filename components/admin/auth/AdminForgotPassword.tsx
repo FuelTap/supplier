@@ -2,20 +2,10 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { REGEXP_ONLY_DIGITS } from "input-otp";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp";
-import {
-  requestPasswordResetOtp,
-  resetPasswordWithOtp,
-  verifyPasswordResetOtp,
-} from "@/lib/server/admin/auth";
+import { requestPasswordReset, resetPassword } from "@/lib/server/admin/auth";
 import {
   PasswordInput as PasswordValues,
   passwordSchema,
@@ -29,58 +19,22 @@ import {
   primaryPillClass,
 } from "@/components/admin/ui/PillInput";
 
-const OTP_SECONDS = 5 * 60 - 1; // the design starts the countdown at 04:59
+const RESEND_SECONDS = 60;
 
 const emailSchema = z.object({
   email: z.string().trim().email({ message: "Please enter a valid email address." }),
 });
 
-type Step = "email" | "otp" | "reset" | "done";
-
 function showError(message: string) {
   adminToast.add({ description: message, type: "error" });
 }
 
+// Step 1 of a password reset: email a reset link, which opens /reset-password.
 export default function AdminForgotPassword() {
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
-  if (step === "done") {
-    return (
-      <SuccessCard
-        title="Password updated."
-        primary={{ label: "Okay", href: "/login" }}
-      >
-        Your password has been set successfully
-      </SuccessCard>
-    );
-  }
-
-  if (step === "otp") {
-    return (
-      <OtpStep
-        email={email}
-        onVerified={(code) => {
-          setOtp(code);
-          setStep("reset");
-        }}
-      />
-    );
-  }
-
-  if (step === "reset") {
-    return <ResetStep email={email} otp={otp} onDone={() => setStep("done")} />;
-  }
-
-  return (
-    <EmailStep
-      onSent={(value) => {
-        setEmail(value);
-        setStep("otp");
-      }}
-    />
-  );
+  if (sentTo) return <LinkSentStep email={sentTo} />;
+  return <EmailStep onSent={setSentTo} />;
 }
 
 function EmailStep({ onSent }: { onSent: (email: string) => void }) {
@@ -97,9 +51,9 @@ function EmailStep({ onSent }: { onSent: (email: string) => void }) {
   async function onSubmit({ email }: { email: string }) {
     setIsSubmitting(true);
     try {
-      const result = await requestPasswordResetOtp(email);
+      const result = await requestPasswordReset(email);
       if (!result.success) return showError(result.message);
-      onSent(email);
+      onSent(email.trim());
     } catch {
       showError("Please check your connection and try again.");
     } finally {
@@ -111,7 +65,7 @@ function EmailStep({ onSent }: { onSent: (email: string) => void }) {
     <>
       <StepHeading
         title="Forgot your password?"
-        text="No problem! Just enter your email, and we'll send you a one-time password to verify your identity so you can reset your password."
+        text="No problem! Just enter your email, and we'll send you a link to reset your password."
       />
       <form
         onSubmit={handleSubmit(onSubmit)}
@@ -149,16 +103,8 @@ function EmailStep({ onSent }: { onSent: (email: string) => void }) {
   );
 }
 
-function OtpStep({
-  email,
-  onVerified,
-}: {
-  email: string;
-  onVerified: (otp: string) => void;
-}) {
-  const [code, setCode] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(OTP_SECONDS);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+function LinkSentStep({ email }: { email: string }) {
+  const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
@@ -167,30 +113,13 @@ function OtpStep({
     return () => clearTimeout(timer);
   }, [secondsLeft]);
 
-  const minutes = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
-  const seconds = String(secondsLeft % 60).padStart(2, "0");
-
-  async function verify() {
-    setIsSubmitting(true);
-    try {
-      const result = await verifyPasswordResetOtp({ email, otp: code });
-      if (!result.success) return showError(result.message);
-      onVerified(code);
-    } catch {
-      showError("Please check your connection and try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
   async function resend() {
     setIsResending(true);
     try {
-      const result = await requestPasswordResetOtp(email);
+      const result = await requestPasswordReset(email);
       if (!result.success) return showError(result.message);
       adminToast.add({ description: result.message });
-      setCode("");
-      setSecondsLeft(OTP_SECONDS);
+      setSecondsLeft(RESEND_SECONDS);
     } catch {
       showError("Please check your connection and try again.");
     } finally {
@@ -201,70 +130,38 @@ function OtpStep({
   return (
     <>
       <StepHeading
-        title="Verify your email address"
-        text="Enter the one-time code sent to your email"
+        title="Check your email"
+        text={`We've sent a password reset link to ${email}. Open it on this device to choose a new password.`}
       />
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void verify();
-        }}
-        className="mt-[clamp(1.25rem,6vh,3.5rem)] flex flex-col items-center"
-      >
-        <InputOTP
-          maxLength={6}
-          pattern={REGEXP_ONLY_DIGITS}
-          value={code}
-          onChange={setCode}
-          aria-label="One-time code"
-        >
-          <InputOTPGroup>
-            {Array.from({ length: 6 }, (_, i) => (
-              <InputOTPSlot
-                key={i}
-                index={i}
-                className="size-13 bg-white text-xl"
-              />
-            ))}
-          </InputOTPGroup>
-        </InputOTP>
-
-        <p className="mt-6 flex items-center gap-2 text-base">
-          <span className="text-black tabular-nums">
-            {minutes}:{seconds}
-          </span>
-          <button
-            type="button"
-            onClick={() => void resend()}
-            disabled={secondsLeft > 0 || isResending}
-            className="text-primary-500 cursor-pointer disabled:cursor-not-allowed disabled:text-primary-400/40"
-          >
-            {isResending ? "Resending…" : "Resend"}
-          </button>
-        </p>
-
+      <p className="mt-[clamp(1.25rem,6vh,3.5rem)] flex items-center justify-center gap-2 text-base">
+        <span className="text-grey-800">Didn&apos;t get it?</span>
         <button
-          type="submit"
-          disabled={code.length !== 6 || isSubmitting}
-          className={`${primaryPillClass} mt-[clamp(1.25rem,6vh,3.5rem)]`}
+          type="button"
+          onClick={() => void resend()}
+          disabled={secondsLeft > 0 || isResending}
+          className="text-primary-500 cursor-pointer disabled:cursor-not-allowed disabled:text-primary-400/40"
         >
-          {isSubmitting ? "Verifying…" : "Verify"}
+          {isResending
+            ? "Resending…"
+            : secondsLeft > 0
+              ? `Resend in ${secondsLeft}s`
+              : "Resend link"}
         </button>
-      </form>
+      </p>
       <BackToLogin />
     </>
   );
 }
 
-function ResetStep({
+// Step 2, opened from the emailed link: /reset-password?email=…&token=…
+export function ResetPasswordForm({
   email,
-  otp,
-  onDone,
+  token,
 }: {
   email: string;
-  otp: string;
-  onDone: () => void;
+  token: string;
 }) {
+  const [done, setDone] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const {
     register,
@@ -278,14 +175,25 @@ function ResetStep({
   async function onSubmit(data: PasswordValues) {
     setIsSubmitting(true);
     try {
-      const result = await resetPasswordWithOtp({ email, otp, ...data });
+      const result = await resetPassword({ email, token, ...data });
       if (!result.success) return showError(result.message);
-      onDone();
+      setDone(true);
     } catch {
       showError("Please check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (done) {
+    return (
+      <SuccessCard
+        title="Password updated."
+        primary={{ label: "Okay", href: "/login" }}
+      >
+        Your password has been set successfully
+      </SuccessCard>
+    );
   }
 
   return (
@@ -333,6 +241,32 @@ function ResetStep({
           {isSubmitting ? "Saving…" : "Continue"}
         </button>
       </form>
+      <p className="mt-6 text-center text-base text-black">
+        Link expired?{" "}
+        <Link
+          href="/forgot-password"
+          className="text-primary-500 ml-1 font-medium hover:underline"
+        >
+          Request a new one
+        </Link>
+      </p>
+    </>
+  );
+}
+
+export function InvalidResetLink() {
+  return (
+    <>
+      <StepHeading
+        title="Reset link unavailable"
+        text="This password reset link is incomplete. Request a new link and open it straight from the email."
+      />
+      <Link
+        href="/forgot-password"
+        className={`${primaryPillClass} mt-[clamp(1rem,4.5vh,2.5rem)]`}
+      >
+        Request a New Link
+      </Link>
       <BackToLogin />
     </>
   );

@@ -38,16 +38,19 @@ export default function AdminHeader() {
     pathname === path || pathname.startsWith(`${path}/`);
 
   async function handleLogout() {
-    if (!user?.id) {
+    try {
+      const res = await adminLogout();
+      if (!res.success) {
+        adminToast.add({ description: res.message, type: "error" });
+        return;
+      }
       router.replace("/login");
-      return;
+    } catch {
+      adminToast.add({
+        description: "Could not log out. Please check your connection and try again.",
+        type: "error",
+      });
     }
-    const res = await adminLogout(user.id);
-    if (!res?.success) {
-      adminToast.add({ description: "Could not log out.", type: "error" });
-      return;
-    }
-    router.replace("/login");
   }
 
   // Below md the header isn't pinned, so open menus would scroll away.

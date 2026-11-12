@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
+import LoadError from "@/components/admin/ui/LoadError";
 import PageLoading from "@/components/admin/ui/PageLoading";
 import { Metadata } from "next";
 import StationsList from "@/components/admin/stations/StationsList";
@@ -17,20 +18,18 @@ export default function StationsPage() {
 }
 
 async function StationsContent() {
-  // Mock data lives in memory, so read it per request rather than at build time.
+  // Account data is per request, so it's read at request time, not build time.
   await connection();
   const [stations, managers] = await Promise.all([getStations(), getManagers()]);
+  if (!stations.success) return <LoadError message={stations.message} />;
+  if (!managers.success) return <LoadError message={managers.message} />;
 
   return (
     <StationsList
-      stations={stations.success ? stations.data : []}
-      managers={
-        managers.success
-          ? managers.data
-              .filter((m) => m.status !== "inactive")
-              .map((m) => ({ id: m.id, name: m.name }))
-          : []
-      }
+      stations={stations.data}
+      managers={managers.data
+        .filter((m) => m.status !== "inactive")
+        .map((m) => ({ id: m.id, name: m.name }))}
     />
   );
 }

@@ -1,17 +1,25 @@
 "use server";
 
+import { stationSchema } from "@/lib/validators/adminSchemas";
+import { assignLocally, loadAccount, localChanges } from "./account";
+import {
+  createApiStation,
+  fetchStationInventory,
+  fetchStationPerformance,
+} from "./api";
 import { getStore, wait } from "./mock";
+import { isAdminMockAuth } from "./session";
 import type {
   ActionResult,
+  Manager,
   QueryResult,
   Station,
   StationOrder,
   StationView,
 } from "./types";
 
-function toView(station: Station): StationView {
-  const store = getStore();
-  const manager = store.managers.find((m) => m.id === station.managerId);
+function toView(station: Station, managers: Manager[]): StationView {
+  const manager = managers.find((m) => m.id === station.managerId);
 
   let displayStatus: StationView["displayStatus"];
   if (!manager) displayStatus = "unassigned";
@@ -39,20 +47,53 @@ function toView(station: Station): StationView {
 }
 
 export async function getStations(): Promise<QueryResult<StationView[]>> {
-  return { success: true, data: getStore().stations.map(toView) };
+  const account = await loadAccount();
+  if (!account.success) return account;
+  const { stations, managers } = account.data;
+  return { success: true, data: stations.map((s) => toView(s, managers)) };
 }
 
+// Resolves to null when the station doesn't exist (or isn't this supplier's).
 export async function getStation(
   id: string,
-): Promise<QueryResult<StationView>> {
-  const station = getStore().stations.find((s) => s.id === id);
-  if (!station) return { success: false, message: "Station not found." };
-  return { success: true, data: toView(station) };
+): Promise<QueryResult<StationView | null>> {
+  const account = await loadAccount();
+  if (!account.success) return account;
+  const station = account.data.stations.find((s) => s.id === id);
+  if (!station) return { success: true, data: null };
+
+  const view = toView(station, account.data.managers);
+  if (isAdminMockAuth()) return { success: true, data: view };
+
+  const accountId = station.accountId ?? station.id;
+  const [inventory, performance] = await Promise.all([
+    fetchStationInventory(accountId),
+    fetchStationPerformance(accountId),
+  ]);
+  if (!inventory.success) return inventory;
+  if (!performance.success) return performance;
+
+  return {
+    success: true,
+    data: {
+      ...view,
+      products: inventory.data.map((i) => i.product),
+      // The API reports running totals, with no daily figures or trends yet.
+      stats: {
+        ...view.stats,
+        monthSales: performance.data.sales,
+        monthOrders: performance.data.orderCount,
+      },
+    },
+  };
 }
 
+// The API only lets a station's own account read its orders, so the supplier
+// sees orders for mock stations only.
 export async function getStationOrders(
   id: string,
 ): Promise<QueryResult<StationOrder[]>> {
+  if (!isAdminMockAuth()) return { success: true, data: [] };
   return { success: true, data: getStore().orders[id] ?? [] };
 }
 
@@ -66,9 +107,44 @@ export type CreateStationInput = {
   managerId: string | null;
 };
 
+// Adds the city and state to the street address unless it already names them;
+// the API geocodes this one string.
+function fullAddress({ address, city, state }: CreateStationInput) {
+  const lower = address.toLowerCase();
+  const parts = [address.trim()];
+  if (city && !lower.includes(city.toLowerCase())) parts.push(city);
+  if (state && !lower.includes(state.toLowerCase())) parts.push(state);
+  return parts.join(", ");
+}
+
 export async function createStation(
   input: CreateStationInput,
 ): Promise<QueryResult<StationView>> {
+  const parsed = stationSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0].message };
+  }
+  const values = parsed.data;
+
+  if (!isAdminMockAuth()) {
+    if (!values.managerId) {
+      return {
+        success: false,
+        message: "Choose a manager for this station. Every station needs one.",
+      };
+    }
+    const created = await createApiStation({
+      name: values.name,
+      address: fullAddress(values),
+      managerId: values.managerId,
+    });
+    if (!created.success) return created;
+
+    const account = await loadAccount();
+    const managers = account.success ? account.data.managers : [];
+    return { success: true, data: toView(created.data, managers) };
+  }
+
   await wait();
   const store = getStore();
 
@@ -81,12 +157,12 @@ export async function createStation(
   const station: Station = {
     id: `stn-${nextNumber}`,
     code: `STN-${nextNumber}`,
-    name: input.name.trim(),
-    address: input.address.trim(),
-    city: input.city,
-    state: input.state,
-    latitude: input.latitude,
-    longitude: input.longitude,
+    name: values.name,
+    address: values.address,
+    city: values.city,
+    state: values.state,
+    latitude: values.latitude,
+    longitude: values.longitude,
     managerId: null,
     complianceStatus: "pending",
     deactivated: false,
@@ -111,49 +187,47 @@ export async function createStation(
   };
   store.stations.unshift(station);
 
-  if (input.managerId) assign(station.id, input.managerId);
-
-  return { success: true, data: toView(station) };
+  const account = await loadAccount();
+  if (!account.success) return account;
+  if (values.managerId) {
+    assignLocally(account.data, station.id, values.managerId);
+  }
+  return {
+    success: true,
+    data: toView(
+      { ...station, managerId: values.managerId },
+      account.data.managers,
+    ),
+  };
 }
 
-// Assigns a manager to a station, freeing whichever station the manager or the
-// station was previously linked to.
-function assign(stationId: string, managerId: string) {
-  const store = getStore();
-  const station = store.stations.find((s) => s.id === stationId);
-  const manager = store.managers.find((m) => m.id === managerId);
-  if (!station || !manager) return;
-
-  const previousManager = store.managers.find(
-    (m) => m.id === station.managerId,
-  );
-  if (previousManager && previousManager.id !== manager.id) {
-    previousManager.stationId = null;
-  }
-  const previousStation = store.stations.find(
-    (s) => s.id === manager.stationId,
-  );
-  if (previousStation && previousStation.id !== station.id) {
-    previousStation.managerId = null;
-  }
-
-  station.managerId = manager.id;
-  manager.stationId = station.id;
-  manager.previousStationId = null;
+async function findStation(id: string) {
+  const account = await loadAccount();
+  if (!account.success) return account;
+  const station = account.data.stations.find((s) => s.id === id);
+  if (!station) return { success: false as const, message: "Station not found." };
+  return { success: true as const, data: { account: account.data, station } };
 }
 
 export async function assignStationManager(
   stationId: string,
   managerId: string,
 ): Promise<ActionResult> {
-  await wait();
-  const store = getStore();
-  const station = store.stations.find((s) => s.id === stationId);
-  const manager = store.managers.find((m) => m.id === managerId);
-  if (!station || !manager) {
-    return { success: false, message: "Station or manager not found." };
+  if (isAdminMockAuth()) await wait();
+  const found = await findStation(stationId);
+  if (!found.success) return found;
+  const { account, station } = found.data;
+
+  const manager = account.managers.find((m) => m.id === managerId);
+  if (!manager) return { success: false, message: "Manager not found." };
+  if (manager.status === "inactive") {
+    return {
+      success: false,
+      message: `${manager.name} is suspended. Reactivate them before assigning a station.`,
+    };
   }
-  assign(stationId, managerId);
+
+  assignLocally(account, station.id, manager.id);
   return {
     success: true,
     message: `${manager.name} is now managing ${station.name}.`,
@@ -163,9 +237,10 @@ export async function assignStationManager(
 export async function deactivateStation(
   stationId: string,
 ): Promise<ActionResult> {
-  await wait();
-  const station = getStore().stations.find((s) => s.id === stationId);
-  if (!station) return { success: false, message: "Station not found." };
+  if (isAdminMockAuth()) await wait();
+  const found = await findStation(stationId);
+  if (!found.success) return found;
+  const { station } = found.data;
 
   if (station.outstandingOrders > 0) {
     return {
@@ -176,7 +251,7 @@ export async function deactivateStation(
     };
   }
 
-  station.deactivated = true;
+  localChanges.stationDeactivated.set(station.id, true);
   return {
     success: true,
     message: `${station.name} has been deactivated and is no longer visible to customers.`,
@@ -186,11 +261,12 @@ export async function deactivateStation(
 export async function reactivateStation(
   stationId: string,
 ): Promise<ActionResult> {
-  await wait();
-  const station = getStore().stations.find((s) => s.id === stationId);
-  if (!station) return { success: false, message: "Station not found." };
+  if (isAdminMockAuth()) await wait();
+  const found = await findStation(stationId);
+  if (!found.success) return found;
+  const { station } = found.data;
 
-  station.deactivated = false;
+  localChanges.stationDeactivated.set(station.id, false);
   return {
     success: true,
     message: `${station.name} is active again and visible to customers.`,

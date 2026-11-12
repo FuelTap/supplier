@@ -61,14 +61,16 @@ export default function StationDetail({
               <h1 className="text-xl font-medium text-blue-600 md:text-2xl">
                 {station.name}
               </h1>
-              {station.displayStatus === "active" && (
+              {station.displayStatus === "active" && station.closesAt && (
                 <span className="bg-primary-50 text-primary-500 rounded-full px-4 py-1 text-sm md:text-lg">
                   Open now, closes {station.closesAt}
                 </span>
               )}
             </div>
             <p className="text-grey-800 mt-1 text-base md:text-lg">
-              {station.address}, {station.city}, {station.state}
+              {[...new Set([station.address, station.city, station.state])]
+                .filter(Boolean)
+                .join(", ")}
             </p>
           </div>
         </div>

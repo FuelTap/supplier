@@ -1,6 +1,10 @@
-// lib/auth-cookies.ts
 import { cookies } from "next/headers";
-import setCookieParser from "set-cookie-parser";
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  type SessionCookie,
+  sessionCookiesFrom,
+} from "./session-tokens";
 
 /**
  * Parses Set-Cookie headers from a backend response and applies them to Next.js cookie store.
@@ -9,22 +13,18 @@ import setCookieParser from "set-cookie-parser";
 export async function syncBackendCookies(
   backendResponse: Response,
 ): Promise<void> {
-  const rawSetCookies = backendResponse.headers.getSetCookie();
-  if (!rawSetCookies || rawSetCookies.length === 0) return;
+  await storeSessionCookies(sessionCookiesFrom(backendResponse));
+}
 
-  const parsedCookies = setCookieParser.parse(rawSetCookies);
+export async function storeSessionCookies(sessionCookies: SessionCookie[]) {
   const cookieStore = await cookies();
-
-  for (const cookie of parsedCookies) {
-    if (cookie.name === "x-access-token" || cookie.name === "x-refresh-token") {
-      cookieStore.set(cookie.name, cookie.value, {
-        httpOnly: true,
-        path: "/",
-        maxAge: cookie.maxAge,
-        expires: cookie.expires,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-      });
-    }
+  for (const cookie of sessionCookies) {
+    cookieStore.set(cookie.name, cookie.value, cookie.options);
   }
+}
+
+export async function clearSessionCookies() {
+  const cookieStore = await cookies();
+  cookieStore.delete(ACCESS_COOKIE);
+  cookieStore.delete(REFRESH_COOKIE);
 }

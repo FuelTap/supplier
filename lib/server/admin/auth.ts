@@ -1,6 +1,8 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { z } from "zod";
+import { apiRequest } from "@/lib/helpers/fetch/typedFetchWrapper";
 import { getUserProfile, loginAction, logoutAction } from "@/lib/server/auth";
 import {
   loginSchema,
@@ -31,11 +33,14 @@ export async function adminLogin(credentials: LoginInput): Promise<ActionResult>
   const result = await loginAction(parsed.data);
   if (!result.success) return { success: false, message: result.message };
 
-  // Customers share the same backend login; keep them out of the supplier app.
+  // Only parent suppliers may use this app; station managers have their own.
   const profile = await getUserProfile();
-  const user = profile.success ? profile.data?.user : undefined;
-  if (!user || !hasAdminRole(user)) {
-    if (user) await logoutAction(user.id);
+  if (!profile.success || !profile.data) {
+    await logoutAction();
+    return { success: false, message: profile.message };
+  }
+  if (!hasAdminRole(profile.data.user)) {
+    await logoutAction();
     return {
       success: false,
       message: "This account doesn't have supplier access.",
@@ -44,19 +49,18 @@ export async function adminLogin(credentials: LoginInput): Promise<ActionResult>
   return { success: true, message: result.message };
 }
 
-export async function adminLogout(userId: string): Promise<ActionResult> {
+export async function adminLogout(): Promise<ActionResult> {
   if (isAdminMockAuth()) {
     (await cookies()).delete(SESSION_COOKIE);
     return { success: true, message: "Logged out." };
   }
 
-  const result = await logoutAction(userId);
-  return result?.success
-    ? { success: true, message: "Logged out." }
-    : { success: false, message: "Could not log out." };
+  await logoutAction();
+  return { success: true, message: "Logged out." };
 }
 
-// Super admin accounts are created from an invitation, not self sign-up.
+// Super admin accounts are created from an invitation, not self sign-up. The
+// API has no invitations yet, so these still use the mock store.
 export async function getInvite(
   token: string | null,
 ): Promise<QueryResult<Invite>> {
@@ -89,37 +93,73 @@ export async function acceptInvite(input: {
   return { success: true, message: invite.data.organisation };
 }
 
-export async function requestPasswordResetOtp(
+const emailSchema = z.string().trim().email("Please enter a valid email address.");
+
+// Emails a password reset link that opens /reset-password.
+export async function requestPasswordReset(
   email: string,
 ): Promise<ActionResult> {
-  await wait();
+  const parsed = emailSchema.safeParse(email);
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0].message };
+  }
+
+  if (isAdminMockAuth()) {
+    await wait();
+    return {
+      success: true,
+      message: `We've sent a reset link to ${parsed.data}.`,
+    };
+  }
+
+  const { result } = await apiRequest("/api/v1/auth/forgot-password", "POST", {
+    email: parsed.data,
+    // The same email can belong to a customer account too.
+    accountType: "supplier",
+  });
+  if (!result.success) {
+    return {
+      success: false,
+      message:
+        result.statusCode === 404
+          ? "We couldn't find a supplier account with that email address."
+          : result.message,
+    };
+  }
   return {
     success: true,
-    message: `We've sent a one-time code to ${email}.`,
+    message: `We've sent a reset link to ${parsed.data}.`,
   };
 }
 
-export async function verifyPasswordResetOtp(input: {
+export async function resetPassword(input: {
   email: string;
-  otp: string;
-}): Promise<ActionResult> {
-  await wait();
-  if (!/^\d{6}$/.test(input.otp) || input.otp === "000000") {
-    return { success: false, message: "That code is incorrect or has expired." };
-  }
-  return { success: true, message: "Code verified." };
-}
-
-export async function resetPasswordWithOtp(input: {
-  email: string;
-  otp: string;
+  token: string;
   password: string;
   confirmPassword: string;
 }): Promise<ActionResult> {
-  await wait();
   const parsed = passwordSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false, message: parsed.error.issues[0].message };
   }
+  if (!input.email || !input.token) {
+    return {
+      success: false,
+      message: "This reset link is incomplete. Please request a new one.",
+    };
+  }
+
+  if (isAdminMockAuth()) {
+    await wait();
+    return { success: true, message: "Your password has been set successfully." };
+  }
+
+  const { result } = await apiRequest("/api/v1/auth/reset-password", "POST", {
+    email: input.email,
+    token: input.token,
+    new_password: parsed.data.password,
+    confirm_password: parsed.data.confirmPassword,
+  });
+  if (!result.success) return { success: false, message: result.message };
   return { success: true, message: "Your password has been set successfully." };
 }
