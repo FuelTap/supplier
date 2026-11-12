@@ -44,7 +44,10 @@ export async function loginAction(
 
   if (!result.success) {
     return result.statusCode === 401
-      ? { ...result, message: "The email or password you entered is incorrect." }
+      ? {
+          ...result,
+          message: "The email or password you entered is incorrect.",
+        }
       : result;
   }
 
