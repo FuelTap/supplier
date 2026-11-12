@@ -1,11 +1,27 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { storeSessionCookies } from "@/lib/helpers/auth-cookies";
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  refreshSession,
+} from "@/lib/helpers/session-tokens";
 import {
   apiRequest,
   ApiRequestOptions,
   ApiResponse,
+  fallbackMessage,
 } from "./typedFetchWrapper";
-import { refreshTokens } from "@/lib/server/auth";
+
+function withToken(base: HeadersInit | undefined, token: string | undefined) {
+  const headers = new Headers(base);
+  if (token) {
+    // The API documents bearer auth; the cookie keeps older routes working.
+    headers.set("Authorization", `Bearer ${token}`);
+    headers.set("Cookie", `${ACCESS_COOKIE}=${token}`);
+  }
+  return headers;
+}
 
 /**
  * Wrapper around apiRequest that handles access token injection and silent 401 refresh retries.
@@ -22,59 +38,50 @@ export async function authenticatedApiRequest<
   // Logout must finish clearing cookies even when the session has expired.
   const { skipAuthRedirect = false, ...requestOptions } = options;
   const cookieStore = await cookies();
-  const accessToken = cookieStore.get("x-access-token")?.value;
+  const accessToken = cookieStore.get(ACCESS_COOKIE)?.value;
+  const refreshToken = cookieStore.get(REFRESH_COOKIE)?.value;
 
-  // Build outbound headers with available access token
-  const headers = new Headers(options.headers);
-  if (accessToken) {
-    headers.set("Cookie", `x-access-token=${accessToken}`);
+  const signedOut: ApiResponse<TResponse> = {
+    success: false,
+    status: "error",
+    statusCode: 401,
+    message: fallbackMessage(401),
+  };
+
+  if (!accessToken && !refreshToken) {
+    if (!skipAuthRedirect) redirect("/login");
+    return signedOut;
   }
 
-  // 1. Initial Attempt
-  const { response, result } = await apiRequest<TRequest, TResponse>(
-    endpoint,
-    method,
-    data,
-    {
+  const send = (token: string | undefined) =>
+    apiRequest<TRequest, TResponse>(endpoint, method, data, {
       ...requestOptions,
-      headers,
-    },
-  );
+      headers: withToken(options.headers, token),
+    });
 
-  // 2. Handle 401 Unauthorized with single automatic retry
-  if (response.status === 401 && !options.skipRefresh) {
-    const refreshSuccessful = await refreshTokens();
+  let { result } = await send(accessToken);
 
-    if (refreshSuccessful) {
-      // Get updated cookie from Next.js store
-      const updatedCookieStore = await cookies();
-      const newAccessToken = updatedCookieStore.get("x-access-token")?.value;
+  // proxy.ts refreshes tokens before pages render, so this mainly covers a
+  // token that expired mid-request or during a long-open page.
+  if (result.statusCode === 401 && !options.skipRefresh && refreshToken) {
+    const refreshed = await refreshSession(refreshToken);
 
-      if (newAccessToken) {
-        const retryHeaders = new Headers(options.headers);
-        retryHeaders.set("Cookie", `x-access-token=${newAccessToken}`);
-
-        // Retry request with fresh token
-        const retry = await apiRequest<TRequest, TResponse>(
-          endpoint,
-          method,
-          data,
-          {
-            ...requestOptions,
-            headers: retryHeaders,
-            skipRefresh: true, // Prevent secondary retries
-          },
-        );
-
-        if (retry.response.status === 401 && !skipAuthRedirect) {
-          redirect("/login");
-        }
-        return retry.result;
+    if (refreshed.ok) {
+      try {
+        await storeSessionCookies(refreshed.cookies);
+      } catch {
+        // Server Components can't set cookies; the proxy stores them on the
+        // next navigation. This request still uses the new token below.
       }
+      ({ result } = await send(refreshed.accessToken));
+    } else if (!refreshed.expired) {
+      // The backend is unreachable. The session may still be valid, so report
+      // the outage instead of signing the user out.
+      return { ...signedOut, statusCode: 0, message: refreshed.message };
     }
   }
 
-  if (response.status === 401 && !skipAuthRedirect) {
+  if (result.statusCode === 401 && !skipAuthRedirect) {
     redirect("/login");
   }
   return result;

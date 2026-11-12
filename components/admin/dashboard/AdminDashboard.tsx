@@ -11,6 +11,7 @@ import type {
 } from "@/lib/server/admin/types";
 import DateRangePill, { type DateRange } from "@/components/admin/ui/DateRangePill";
 import FilterPill from "@/components/admin/ui/FilterPill";
+import LoadError from "@/components/admin/ui/LoadError";
 import PageHeading from "@/components/admin/ui/PageHeading";
 import ProcessingOverlay from "@/components/admin/ui/ProcessingOverlay";
 import { primaryPillClass } from "@/components/admin/ui/PillInput";
@@ -24,6 +25,8 @@ interface Props {
   companyName: string;
   setup: SetupStatus;
   metrics: DashboardMetrics | null;
+  // Why `metrics` is null, when it failed to load.
+  metricsError: string | null;
   stations: { id: string; name: string }[];
 }
 
@@ -33,6 +36,7 @@ export default function AdminDashboard({
   companyName,
   setup,
   metrics,
+  metricsError,
   stations,
 }: Props) {
   const router = useRouter();
@@ -68,6 +72,7 @@ export default function AdminDashboard({
     <FullDashboard
       companyName={companyName}
       metrics={metrics}
+      metricsError={metricsError}
       stations={stations}
     />
   );
@@ -76,6 +81,7 @@ export default function AdminDashboard({
 function FullDashboard({
   companyName,
   metrics,
+  metricsError,
   stations,
 }: Omit<Props, "setup">) {
   const [stationId, setStationId] = useState("all");
@@ -136,9 +142,10 @@ function FullDashboard({
           </div>
         </div>
       ) : (
-        <p role="alert" className="text-error mt-10 text-base">
-          We couldn&apos;t load your dashboard figures. Please refresh the page.
-        </p>
+        <LoadError
+          title="We couldn't load your dashboard figures"
+          message={metricsError ?? "Please try again."}
+        />
       )}
     </>
   );

@@ -1,30 +1,44 @@
 "use server";
 
-import { cookies } from "next/headers";
 import type { User } from "@/context/AuthProvider";
-import { syncBackendCookies } from "@/lib/helpers/auth-cookies";
+import {
+  clearSessionCookies,
+  syncBackendCookies,
+} from "@/lib/helpers/auth-cookies";
 import { authenticatedApiRequest } from "@/lib/helpers/fetch/authenticatedApiRequest";
-import { apiRequest } from "@/lib/helpers/fetch/typedFetchWrapper";
+import {
+  apiRequest,
+  type ApiResponse,
+} from "@/lib/helpers/fetch/typedFetchWrapper";
+import { ACCESS_COOKIE } from "@/lib/helpers/session-tokens";
 import type { LoginInput } from "@/lib/validators/authSchema";
+import { cookies } from "next/headers";
 
 // Signs in against the backend and stores its session cookies (httpOnly) on
 // this app's domain.
-export async function loginAction(credentials: LoginInput) {
+export async function loginAction(
+  credentials: LoginInput,
+): Promise<ApiResponse> {
   const { response, result } = await apiRequest(
-    "/api/v1/auth/login",
+    "/api/v1/supplier/auth/login",
     "POST",
     credentials,
     { skipRefresh: true },
   );
 
-  if (!result.success) return result;
+  if (!result.success) {
+    return result.statusCode === 401
+      ? { ...result, message: "The email or password you entered is incorrect." }
+      : result;
+  }
 
   await syncBackendCookies(response);
-  const accessToken = (await cookies()).get("x-access-token")?.value;
+  const accessToken = (await cookies()).get(ACCESS_COOKIE)?.value;
   if (!accessToken) {
     return {
       success: false,
       status: "error",
+      statusCode: response.status,
       message:
         "Login succeeded, but no session cookie was received. Please try again.",
     };
@@ -32,56 +46,43 @@ export async function loginAction(credentials: LoginInput) {
   return result;
 }
 
-export async function logoutAction(userId: string) {
-  try {
-    await authenticatedApiRequest(
-      "api/v1/auth/logout",
-      "POST",
-      { userId },
-      // Logout must finish clearing cookies even when the session has expired.
-      { skipAuthRedirect: true },
-    );
-  } catch {
-    return { success: false, error: "Backend request failed" };
-  }
-
-  const cookieStore = await cookies();
-  cookieStore.delete("x-access-token");
-  cookieStore.delete("x-refresh-token");
+// The API has no logout endpoint; signing out drops this app's session cookies.
+export async function logoutAction() {
+  await clearSessionCookies();
   return { success: true };
 }
 
-export async function getUserProfile() {
-  return await authenticatedApiRequest<void, { user: User }>(
+// GET /auth/user returns the account either wrapped as { user } or bare.
+function toUser(data: unknown): User | undefined {
+  const raw =
+    data && typeof data === "object" && "user" in data
+      ? (data as { user: unknown }).user
+      : data;
+  if (!raw || typeof raw !== "object") return undefined;
+
+  const user = raw as Partial<User> & { _id?: string };
+  const id = user.id ?? user._id;
+  if (typeof id !== "string") return undefined;
+  return { ...(user as User), id };
+}
+
+export async function getUserProfile(): Promise<ApiResponse<{ user: User }>> {
+  const result = await authenticatedApiRequest<void, unknown>(
     "/api/v1/auth/user",
     "GET",
   );
-}
+  if (!result.success) return { ...result, data: undefined };
 
-export async function refreshTokens(): Promise<boolean> {
-  const cookieStore = await cookies();
-  const refreshToken = cookieStore.get("x-refresh-token")?.value;
-
-  if (!refreshToken) {
-    return false;
+  const user = toUser(result.data);
+  if (!user) {
+    console.error("GET /auth/user returned an unexpected shape.");
+    return {
+      ...result,
+      success: false,
+      status: "error",
+      message: "We couldn't read your account details. Please try again.",
+      data: undefined,
+    };
   }
-
-  const { response, result } = await apiRequest(
-    "api/v1/auth/refresh-token",
-    "POST",
-    undefined,
-    {
-      headers: {
-        Cookie: `x-refresh-token=${refreshToken}`,
-      },
-      skipRefresh: true,
-    },
-  );
-
-  if (response.ok && result.success) {
-    await syncBackendCookies(response);
-    return true;
-  }
-
-  return false;
+  return { ...result, data: { user } };
 }

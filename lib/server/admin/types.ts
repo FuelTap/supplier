@@ -48,6 +48,9 @@ export type StationStats = {
 
 export type Station = {
   id: string;
+  // The station's own user account, which owns its products, orders and
+  // performance figures in the API. Not the same as `id`; defaults to it.
+  accountId?: string;
   code: string; // e.g. "STN-1275"
   name: string;
   address: string;
@@ -60,7 +63,7 @@ export type Station = {
   // Set when the super admin deactivates the station.
   deactivated: boolean;
   outstandingOrders: number;
-  closesAt: string; // e.g. "6:00 PM"
+  closesAt: string | null; // e.g. "6:00 PM"; null when unknown
   products: StationProduct[];
   stats: StationStats;
   createdAt: string; // ISO date
