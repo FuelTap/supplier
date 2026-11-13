@@ -8,7 +8,7 @@ Set these server-only variables in `.env.local` to the exact role values returne
 by `/api/v1/auth/user`. Each accepts a comma-separated list:
 
 ```dotenv
-SUPPLIER_ACCESS_ROLES=super-admin,supplier
+SUPPLIER_ACCESS_ROLES=your-backend-supplier
 MANAGER_ACCESS_ROLES=your-backend-manager-role
 ```
 
