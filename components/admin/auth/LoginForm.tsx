@@ -6,7 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { adminLogin } from "@/lib/server/admin/auth";
-import { LoginInput, loginSchema } from "@/lib/validators/authSchema";
+import {
+  type LoginAccountType,
+  LoginInput,
+  loginSchema,
+} from "@/lib/validators/authSchema";
 import { adminToast } from "@/components/admin/ui/AdminToaster";
 import {
   FormField,
@@ -15,9 +19,12 @@ import {
   primaryPillClass,
 } from "@/components/admin/ui/PillInput";
 
-export default function AdminLoginForm() {
+export default function LoginForm() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [accountType, setAccountType] = useState<LoginAccountType>("supplier");
+  const accountLabel =
+    accountType === "supplier" ? "Supplier" : "Station manager";
   const {
     register,
     handleSubmit,
@@ -30,7 +37,7 @@ export default function AdminLoginForm() {
   async function onSubmit(data: LoginInput) {
     setIsSubmitting(true);
     try {
-      const response = await adminLogin(data);
+      const response = await adminLogin(data, accountType);
       if (!response.success) {
         adminToast.add({
           title: "Login failed",
@@ -39,7 +46,7 @@ export default function AdminLoginForm() {
         });
         return;
       }
-      router.replace("/dashboard");
+      router.replace(response.redirectTo);
     } catch {
       adminToast.add({
         title: "Login failed",
@@ -54,10 +61,12 @@ export default function AdminLoginForm() {
   return (
     <>
       <h1 className="text-3xl font-medium text-black md:text-4xl">
-        Welcome Back!
+        {accountLabel} login
       </h1>
       <p className="text-grey-800 mt-2 text-base">
-        Glad to see you again! Please log in to continue.
+        {accountType === "supplier"
+          ? "Sign in to manage your stations and supplier account."
+          : "Sign in with your assigned station manager account."}
       </p>
 
       <form
@@ -65,6 +74,33 @@ export default function AdminLoginForm() {
         className="mt-[clamp(1.25rem,6vh,3.5rem)] flex flex-col gap-4"
         noValidate
       >
+        <fieldset disabled={isSubmitting} className="mb-2 min-w-0">
+          <legend className="mb-3 text-base text-black">Sign in as</legend>
+          <div className="grid grid-cols-2 gap-1 rounded-full border border-gray-200 bg-gray-50 p-1">
+            {(
+              [
+                ["supplier", "Supplier"],
+                ["manager", "Station manager"],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} className="relative min-w-0 cursor-pointer">
+                <input
+                  type="radio"
+                  name="accountType"
+                  value={value}
+                  checked={accountType === value}
+                  onChange={() => setAccountType(value)}
+                  className="peer sr-only"
+                />
+                <span
+                  className={`flex min-h-11 items-center justify-center rounded-full px-3 py-2 text-center text-sm font-medium text-gray-600 peer-checked:bg-primary-500 peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary-500 peer-disabled:cursor-not-allowed peer-disabled:opacity-60`}
+                >
+                  {label}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <FormField label="Email" htmlFor="email" error={errors.email?.message}>
           <PillInput
             id="email"
@@ -102,7 +138,9 @@ export default function AdminLoginForm() {
           disabled={isSubmitting}
           className={`${primaryPillClass} mt-[clamp(1.25rem,5vh,3rem)]`}
         >
-          {isSubmitting ? "Logging in…" : "Log In"}
+          {isSubmitting
+            ? "Logging in…"
+            : `Log in as ${accountLabel.toLowerCase()}`}
         </button>
       </form>
 

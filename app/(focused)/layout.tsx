@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import AdminSession from "@/components/admin/AdminSession";
+import { AuthProvider } from "@/context/AuthProvider";
+import { requireAccess } from "@/lib/server/access";
 import PageLoading from "@/components/admin/ui/PageLoading";
 import SoftGlow from "@/components/admin/ui/SoftGlow";
 
@@ -14,8 +15,13 @@ export default function AdminFocusedLayout({
     <div className="relative isolate flex min-h-dvh flex-col bg-[#F8F9FB]">
       <SoftGlow className="opacity-40" />
       <Suspense fallback={<PageLoading />}>
-        <AdminSession>{children}</AdminSession>
+        <FocusedContent>{children}</FocusedContent>
       </Suspense>
     </div>
   );
+}
+
+async function FocusedContent({ children }: { children: React.ReactNode }) {
+  const user = await requireAccess("supplier");
+  return <AuthProvider initialUser={user}>{children}</AuthProvider>;
 }
