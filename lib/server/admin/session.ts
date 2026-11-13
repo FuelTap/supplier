@@ -5,16 +5,6 @@ import { getUserProfile } from "@/lib/server/auth";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export const ADMIN_ROLES = ["super-admin", "supplier"];
-
-export function hasAdminRole(user: User) {
-  // The backend sends either a list of roles or a single role string.
-  const roles: unknown[] = [user.account?.role ?? []].flat();
-  return roles.some(
-    (role) => typeof role === "string" && ADMIN_ROLES.includes(role),
-  );
-}
-
 export const SESSION_COOKIE = "x-access-token";
 export const MOCK_SESSION_TOKEN = "mock-super-admin";
 
@@ -59,11 +49,9 @@ export async function startMockSession() {
   });
 }
 
-// Returns the signed-in super admin, or redirects to /login when there's no
-// session or the account isn't a supplier. Any other failure (backend down,
-// unexpected response) throws, so app/error.tsx can offer a retry instead of
-// signing the user out.
-export async function requireAdmin(): Promise<User> {
+// Loads the authenticated account without deciding which area it may access.
+// Backend or profile failures throw so app/error.tsx can offer a retry.
+export async function requireSession(): Promise<User> {
   if (isAdminMockAuth()) {
     const token = (await cookies()).get(SESSION_COOKIE)?.value;
     if (token !== MOCK_SESSION_TOKEN) redirect("/login");
@@ -76,7 +64,5 @@ export async function requireAdmin(): Promise<User> {
   }
 
   const { user } = result.data;
-  if (!hasAdminRole(user)) redirect("/login");
-
   return user;
 }

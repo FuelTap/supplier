@@ -13,6 +13,7 @@ import { useScrollLock } from "@/hooks/useScrollLock";
 import { useEffect, useState } from "react";
 import { adminLogout } from "@/lib/server/admin/auth";
 import { adminToast } from "./ui/AdminToaster";
+import type { AccessRole } from "@/lib/server/access";
 
 const adminLinks = [
   { name: "Dashboard", path: "/dashboard" },
@@ -21,10 +22,15 @@ const adminLinks = [
   { name: "Inventory", path: "/inventory" },
 ];
 
+const managerLinks = [
+  { name: "Dashboard", path: "/sub" },
+  { name: "Orders", path: "/sub/orders" },
+];
+
 const accountItemClassName =
   "flex w-full cursor-pointer items-center px-6 py-3 text-left text-sm text-black transition-colors hover:bg-gray-100 md:px-7 md:py-3.5 md:text-base";
 
-export default function AdminHeader() {
+export default function Header({ variant = "supplier" }: { variant?: AccessRole }) {
   const { user } = useAuth();
   const fullName = user?.profile?.fullName ?? "";
   const initials = splitName(fullName || "Admin");
@@ -69,7 +75,7 @@ export default function AdminHeader() {
   }, [menuOpen]);
 
   const navLinks = (onNavigate?: () => void) =>
-    adminLinks.map((link) => (
+    (variant === "manager" ? managerLinks : adminLinks).map((link) => (
       <Link
         key={link.path}
         href={link.path}

@@ -11,16 +11,32 @@ import {
   type ApiResponse,
 } from "@/lib/helpers/fetch/typedFetchWrapper";
 import { ACCESS_COOKIE } from "@/lib/helpers/session-tokens";
-import type { LoginInput } from "@/lib/validators/authSchema";
+import {
+  loginAccountTypeSchema,
+  type LoginAccountType,
+  type LoginInput,
+} from "@/lib/validators/authSchema";
 import { cookies } from "next/headers";
 
 // Signs in against the backend and stores its session cookies (httpOnly) on
 // this app's domain.
 export async function loginAction(
   credentials: LoginInput,
+  accountType: LoginAccountType = "supplier",
 ): Promise<ApiResponse> {
+  const parsedType = loginAccountTypeSchema.safeParse(accountType);
+  if (!parsedType.success) {
+    return {
+      success: false,
+      status: "error",
+      statusCode: 400,
+      message: "Choose supplier or station manager to sign in.",
+    };
+  }
   const { response, result } = await apiRequest(
-    "/api/v1/supplier/auth/login",
+    parsedType.data === "manager"
+      ? "/api/v1/supplier/station-auth/login"
+      : "/api/v1/supplier/auth/login",
     "POST",
     credentials,
     { skipRefresh: true },
