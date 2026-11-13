@@ -4,6 +4,11 @@ const nextConfig: NextConfig = {
   /* config options here */
   experimental: {
     agentFeedback: true,
+    serverActions: {
+      // KYB uploads three files of up to 5 MB each in one request, plus
+      // multipart metadata.
+      bodySizeLimit: "16mb",
+    },
   },
   cacheComponents: true,
   partialPrefetching: true,
