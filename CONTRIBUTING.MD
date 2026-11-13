@@ -88,13 +88,13 @@ style: fix typos
 ### Bad examples — do NOT do these
 
 ```bash
-Added database                            # no type, no scope, vague
-User authentication and authorization     # no type, no scope
-Update README.md                          # no type, no scope, too generic
-Fixes to errors/warnings before deployment # no type, no scope, vague
-fix: resolve latest build failure         # "latest" is vague
-feat: file upload/storage                 # does not describe the change
-chore: add root .env and update .gitignore # missing scope, mixes two changes
+Added database                            # missing type, vague
+User authentication and authorization     # missing type
+Update README.md                          # missing type, too generic
+Fixes to errors/warnings before deployment # missing type, vague
+fix resolve build failure                 # missing colon
+feature: add file uploads                  # unsupported type
+chore: update dependencies and configuration across all workspaces # description exceeds 50 characters
 
 ```
 

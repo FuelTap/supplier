@@ -25,12 +25,17 @@ const adminLinks = [
 const managerLinks = [
   { name: "Dashboard", path: "/sub" },
   { name: "Orders", path: "/sub/orders" },
+  { name: "Inventory", path: "/sub/inventory" },
 ];
 
 const accountItemClassName =
   "flex w-full cursor-pointer items-center px-6 py-3 text-left text-sm text-black transition-colors hover:bg-gray-100 md:px-7 md:py-3.5 md:text-base";
 
-export default function Header({ variant = "supplier" }: { variant?: AccessRole }) {
+export default function Header({
+  variant = "supplier",
+}: {
+  variant?: AccessRole;
+}) {
   const { user } = useAuth();
   const fullName = user?.profile?.fullName ?? "";
   const initials = splitName(fullName || "Admin");
@@ -53,7 +58,8 @@ export default function Header({ variant = "supplier" }: { variant?: AccessRole 
       router.replace("/login");
     } catch {
       adminToast.add({
-        description: "Could not log out. Please check your connection and try again.",
+        description:
+          "Could not log out. Please check your connection and try again.",
         type: "error",
       });
     }
