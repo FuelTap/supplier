@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
+import LoadError from "@/components/admin/ui/LoadError";
 import PageLoading from "@/components/admin/ui/PageLoading";
 import { Metadata } from "next";
 import InventoryTable from "@/components/admin/inventory/InventoryTable";
@@ -16,8 +17,9 @@ export default function InventoryPage() {
 }
 
 async function InventoryContent() {
-  // Mock data lives in memory, so read it per request rather than at build time.
+  // Account data is per request, so it's read at request time, not build time.
   await connection();
   const result = await getInventory();
-  return <InventoryTable inventory={result.success ? result.data : []} />;
+  if (!result.success) return <LoadError message={result.message} />;
+  return <InventoryTable inventory={result.data} />;
 }

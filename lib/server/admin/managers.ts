@@ -1,33 +1,48 @@
 "use server";
 
+import { managerSchema } from "@/lib/validators/adminSchemas";
+import { type Account, loadAccount, localChanges } from "./account";
+import { createApiManager } from "./api";
 import { getStore, wait } from "./mock";
-import { getStation } from "./stations";
+import { isAdminMockAuth } from "./session";
 import type {
   ActionResult,
   Manager,
   ManagerView,
   QueryResult,
+  StationView,
 } from "./types";
 
-async function toView(manager: Manager): Promise<ManagerView> {
-  if (!manager.stationId) return { ...manager, station: null };
-  const result = await getStation(manager.stationId);
-  if (!result.success) return { ...manager, station: null };
-  const station = result.data;
+function toView(manager: Manager, account: Account): ManagerView {
+  const station = account.stations.find((s) => s.id === manager.stationId);
+  if (!station) return { ...manager, station: null };
+
+  let displayStatus: StationView["displayStatus"] = "active";
+  if (
+    station.deactivated ||
+    manager.status !== "active" ||
+    station.complianceStatus !== "verified"
+  )
+    displayStatus = "inactive";
+
   return {
     ...manager,
     station: {
       id: station.id,
       name: station.name,
       state: station.state,
-      displayStatus: station.displayStatus,
+      displayStatus,
     },
   };
 }
 
 export async function getManagers(): Promise<QueryResult<ManagerView[]>> {
-  const views = await Promise.all(getStore().managers.map(toView));
-  return { success: true, data: views };
+  const account = await loadAccount();
+  if (!account.success) return account;
+  return {
+    success: true,
+    data: account.data.managers.map((m) => toView(m, account.data)),
+  };
 }
 
 export type InviteManagerInput = {
@@ -36,12 +51,23 @@ export type InviteManagerInput = {
   phone: string;
 };
 
+// On success, `message` is the invited email address.
 export async function inviteManager(
   input: InviteManagerInput,
 ): Promise<ActionResult> {
+  const parsed = managerSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0].message };
+  }
+  const email = parsed.data.email.toLowerCase();
+
+  if (!isAdminMockAuth()) {
+    const created = await createApiManager({ ...parsed.data, email });
+    return created.success ? { success: true, message: email } : created;
+  }
+
   await wait();
   const store = getStore();
-  const email = input.email.trim().toLowerCase();
 
   if (store.managers.some((m) => m.email.toLowerCase() === email)) {
     return {
@@ -59,9 +85,9 @@ export async function inviteManager(
   store.managers.unshift({
     id: `mgr-${nextNumber}`,
     code: `MGR-${nextNumber}`,
-    name: input.name.trim(),
+    name: parsed.data.name,
     email,
-    phone: input.phone,
+    phone: parsed.data.phone,
     stationId: null,
     previousStationId: null,
     status: "pending",
@@ -73,15 +99,20 @@ export async function inviteManager(
   return { success: true, message: email };
 }
 
-function findManager(id: string) {
-  return getStore().managers.find((m) => m.id === id);
+async function findManager(id: string) {
+  if (isAdminMockAuth()) await wait();
+  const account = await loadAccount();
+  if (!account.success) return account;
+  const manager = account.data.managers.find((m) => m.id === id);
+  if (!manager) return { success: false as const, message: "Manager not found." };
+  return { success: true as const, data: { account: account.data, manager } };
 }
 
+// Not supported by the API yet: nothing is re-sent.
 export async function resendManagerInvite(id: string): Promise<ActionResult> {
-  await wait();
-  const manager = findManager(id);
-  if (!manager) return { success: false, message: "Manager not found." };
-  manager.invitedAt = new Date().toISOString();
+  const found = await findManager(id);
+  if (!found.success) return found;
+  const { manager } = found.data;
   return {
     success: true,
     message: `A new invitation has been sent to ${manager.email}.`,
@@ -89,15 +120,11 @@ export async function resendManagerInvite(id: string): Promise<ActionResult> {
 }
 
 export async function cancelManagerInvite(id: string): Promise<ActionResult> {
-  await wait();
-  const store = getStore();
-  const manager = findManager(id);
-  if (!manager) return { success: false, message: "Manager not found." };
+  const found = await findManager(id);
+  if (!found.success) return found;
+  const { manager } = found.data;
 
-  const station = store.stations.find((s) => s.id === manager.stationId);
-  if (station) station.managerId = null;
-  store.managers = store.managers.filter((m) => m.id !== id);
-
+  localChanges.removedManagers.add(manager.id);
   return {
     success: true,
     message: `The invitation to ${manager.name} has been cancelled.`,
@@ -105,10 +132,9 @@ export async function cancelManagerInvite(id: string): Promise<ActionResult> {
 }
 
 export async function suspendManager(id: string): Promise<ActionResult> {
-  await wait();
-  const store = getStore();
-  const manager = findManager(id);
-  if (!manager) return { success: false, message: "Manager not found." };
+  const found = await findManager(id);
+  if (!found.success) return found;
+  const { manager } = found.data;
 
   if (manager.outstandingOrders > 0) {
     return {
@@ -118,12 +144,10 @@ export async function suspendManager(id: string): Promise<ActionResult> {
     };
   }
 
-  const station = store.stations.find((s) => s.id === manager.stationId);
-  if (station) station.managerId = null;
-  manager.previousStationId = manager.stationId;
-  manager.stationId = null;
-  manager.status = "inactive";
-
+  localChanges.managerStatus.set(manager.id, {
+    status: "inactive",
+    previousStationId: manager.stationId,
+  });
   return {
     success: true,
     message: `${manager.name} has been suspended and can no longer access their FuelTap account.`,
@@ -131,20 +155,20 @@ export async function suspendManager(id: string): Promise<ActionResult> {
 }
 
 export async function reactivateManager(id: string): Promise<ActionResult> {
-  await wait();
-  const store = getStore();
-  const manager = findManager(id);
-  if (!manager) return { success: false, message: "Manager not found." };
+  const found = await findManager(id);
+  if (!found.success) return found;
+  const { account, manager } = found.data;
 
-  manager.status = "active";
-  const previous = store.stations.find(
+  localChanges.managerStatus.set(manager.id, {
+    status: "active",
+    previousStationId: null,
+  });
+
+  const previous = account.stations.find(
     (s) => s.id === manager.previousStationId,
   );
-  manager.previousStationId = null;
-
   if (previous && !previous.managerId) {
-    previous.managerId = manager.id;
-    manager.stationId = previous.id;
+    localChanges.stationManagers.set(previous.id, manager.id);
     return {
       success: true,
       message: `${manager.name} has been reactivated and can now access their assigned station. They'll be notified of this change.`,
@@ -158,10 +182,9 @@ export async function reactivateManager(id: string): Promise<ActionResult> {
 }
 
 export async function deleteManager(id: string): Promise<ActionResult> {
-  await wait();
-  const store = getStore();
-  const manager = findManager(id);
-  if (!manager) return { success: false, message: "Manager not found." };
+  const found = await findManager(id);
+  if (!found.success) return found;
+  const { manager } = found.data;
 
   if (manager.outstandingOrders > 0) {
     return {
@@ -171,10 +194,7 @@ export async function deleteManager(id: string): Promise<ActionResult> {
     };
   }
 
-  const station = store.stations.find((s) => s.id === manager.stationId);
-  if (station) station.managerId = null;
-  store.managers = store.managers.filter((m) => m.id !== id);
-
+  localChanges.removedManagers.add(manager.id);
   return {
     success: true,
     message: `${manager.name} has been deleted and no longer has access to FuelTap.`,

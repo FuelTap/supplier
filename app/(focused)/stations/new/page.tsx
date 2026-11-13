@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
+import LoadError from "@/components/admin/ui/LoadError";
 import PageLoading from "@/components/admin/ui/PageLoading";
 import { Metadata } from "next";
 import AddStationForm from "@/components/admin/stations/AddStationForm";
@@ -16,15 +17,17 @@ export default function NewStationPage() {
 }
 
 async function NewStationContent() {
-  // Mock data lives in memory, so read it per request rather than at build time.
+  // Account data is per request, so it's read at request time, not build time.
   await connection();
   const result = await getManagers();
-  // Suspended managers can't be assigned to a station.
-  const managers = result.success
-    ? result.data
-        .filter((m) => m.status !== "inactive")
-        .map((m) => ({ id: m.id, name: m.name }))
-    : [];
+  if (!result.success) {
+    return <LoadError message={result.message} backHref="/stations" />;
+  }
+  // A new station needs a manager who is neither suspended nor already running
+  // another station.
+  const managers = result.data
+    .filter((m) => m.status !== "inactive" && !m.station)
+    .map((m) => ({ id: m.id, name: m.name }));
 
   return <AddStationForm managers={managers} />;
 }

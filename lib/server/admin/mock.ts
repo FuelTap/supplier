@@ -10,9 +10,9 @@ import type {
   StationStats,
 } from "./types";
 
-// There is no backend for the super admin pages yet, so every admin server
-// action reads and writes this in-memory store. When the API exists, replace
-// the bodies of the functions in lib/server/admin/*.ts and delete this file.
+// Demo data for local development without a backend (ADMIN_MOCK_AUTH=true;
+// see session.ts). With the real API, it still supplies what the API can't
+// yet: invitations, KYB status, station orders and the dashboard's trends.
 //
 // Switch the scenario to preview the designs:
 // - "new-user": brand-new supplier, setup checklist at 1/4, everything empty.
@@ -20,7 +20,7 @@ import type {
 //
 // Handy mock values:
 // - Invite link: /admin/register?token=demo-invite (any other token is invalid)
-// - Forgot password OTP: any 6 digits work except 000000, which is rejected.
+// - Password reset: any email is accepted; open /reset-password?email=a@b.co&token=x
 type MockScenario = "new-user" | "existing-user";
 
 export const MOCK_SCENARIO = "existing-user" as MockScenario;

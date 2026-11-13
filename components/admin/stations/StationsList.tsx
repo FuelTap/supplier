@@ -189,9 +189,11 @@ export default function StationsList({
                       )}
                     </td>
                     <td className="px-5 py-4 text-black">
-                      <span className="block">{station.address}</span>
+                      {station.address && (
+                        <span className="block">{station.address}</span>
+                      )}
                       <span className="text-grey-800 block">
-                        {station.city}, {station.state}
+                        {[station.city, station.state].filter(Boolean).join(", ")}
                       </span>
                     </td>
                     <td className="px-5 py-4">
