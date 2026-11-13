@@ -7,7 +7,6 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import StatSection from "./StatSection";
 import RecentSection from "./RecentSection";
-import { useAuth } from "@/context/AuthProvider";
 
 const ManagerDashboard = ({ empty = false }: { empty?: boolean }) => {
   const [range, setRange] = useState<DateRange>({ from: "", to: "" });
@@ -20,7 +19,7 @@ const ManagerDashboard = ({ empty = false }: { empty?: boolean }) => {
       >
         <DateRangePill value={range} onChange={setRange} />
         <Link
-          href="/inventory"
+          href="/sub/inventory?add=true"
           className={`${primaryPillClass} w-auto! gap-2 px-6`}
         >
           <Plus size={18} aria-hidden="true" />

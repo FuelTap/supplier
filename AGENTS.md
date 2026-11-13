@@ -19,3 +19,19 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Agent documentation: Preserve the generated Next.js block. Add your Context7 instructions so future sessions retain them.
 
 Also fix contradictory commit examples in CONTRIBUTING.MD: several “bad” examples follow its stated convention.
+
+
+## Project guide
+
+- `app/` contains App Router routes. `(auth)` covers sign-in and recovery; `(dashboard)` contains supplier pages; `(manager)/sub` contains manager dashboard, orders, and inventory; `(focused)` contains focused setup flows.
+- `components/` contains shared UI, supplier components in `admin/`, and manager components in `substation/`. Use PascalCase component names, surrounding TypeScript style, and existing `@/` imports.
+- `lib/server/` contains authenticated backend requests and access guards. Reuse these request helpers for real API operations.
+- `lib/validators/` contains input schemas. `public/` contains static assets served from the site root.
+- Run `pnpm install` to install dependencies, `pnpm dev` for development, `pnpm build` for production validation, and `pnpm lint` for lint checks. No test script currently exists; record manual checks for affected flows.
+- Supplier route layouts use server-side `requireAccess("supplier")`; manager routes use `requireAccess("manager")`. Verified profile roles determine access. Any manager data API must also verify the assigned station on the server; never trust a client station ID.
+- `/sub/inventory` currently uses in-memory preview state, starting empty. Add, edit, remove, and availability changes do not call the backend and reset on refresh or unmount. `/sub/inventory?add=true` opens the reusable Add Product dialog from any link. Supplier inventory continues using its existing API reads.
+- Never commit secrets or expose session tokens. Keep `ADMIN_MOCK_AUTH` restricted to local development.
+
+## Context7 documentation
+
+Use Context7 for library, framework, SDK, API, CLI, or cloud-service syntax, configuration, migrations, setup, and library-specific debugging. Start with `resolve-library-id` unless given an exact `/org/project` ID. Select the closest reputable match, then call `query-docs` for one specific concept at a time. Use separate queries for distinct concepts. Prefer Context7 over web search. General programming, business-logic debugging, code review, and refactoring do not require Context7.
