@@ -1,10 +1,10 @@
 import { Metadata } from "next";
-import AdminLoginForm from "@/components/admin/auth/AdminLoginForm";
+import LoginForm from "@/components/admin/auth/LoginForm";
 
 export const metadata: Metadata = {
   title: "Log In | FuelTap Supplier",
 };
 
 export default function AdminLoginPage() {
-  return <AdminLoginForm />;
+  return <LoginForm />;
 }
