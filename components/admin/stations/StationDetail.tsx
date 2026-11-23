@@ -2,18 +2,27 @@
 
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Suspense, use, useState, useTransition } from "react";
+import { dashboardPeriodHref } from "@/lib/helpers/dashboard-period";
 import { splitName } from "@/lib/helpers/help";
 import type {
   OrderStatus,
+  QueryResult,
+  StationDashboardMetrics,
   StationOrder,
   StationView,
 } from "@/lib/server/admin/types";
+import DashboardTrends from "@/components/admin/dashboard/DashboardTrends";
+import MetricsPeriodPicker from "@/components/admin/dashboard/MetricsPeriodPicker";
 import ActionsMenu from "@/components/admin/ui/ActionsMenu";
+import LoadError from "@/components/admin/ui/LoadError";
 import type { ManagerOption } from "@/components/admin/ui/ManagerPicker";
+import type { MonthYear } from "@/components/admin/ui/MonthYearPill";
 import Pagination, { paginate } from "@/components/admin/ui/Pagination";
 import StatCard from "@/components/admin/ui/StatCard";
 import StatusBadge, { type BadgeTone } from "@/components/admin/ui/StatusBadge";
+import { FiguresSkeleton } from "@/components/admin/ui/SupplierSkeletons";
 import {
   formatCount,
   formatNaira,
@@ -31,18 +40,31 @@ const orderStatus: Record<OrderStatus, { label: string; tone: BadgeTone }> = {
   scheduled: { label: "Scheduled", tone: "yellow" },
 };
 
+type StationDetailProps = {
+  station: StationView;
+  orders: StationOrder[];
+  managers: ManagerOption[];
+  metrics: Promise<QueryResult<StationDashboardMetrics>>;
+};
+
 export default function StationDetail({
   station,
   orders,
   managers,
-}: {
-  station: StationView;
-  orders: StationOrder[];
-  managers: ManagerOption[];
-}) {
+  metrics,
+}: StationDetailProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const { actionsFor, dialogs } = useStationActions(managers);
-  const { stats } = station;
   const hasActivity = orders.length > 0;
+
+  function selectPeriod(period: MonthYear) {
+    startTransition(() => {
+      router.push(dashboardPeriodHref(`/stations/${encodeURIComponent(station.id)}`, period), {
+        scroll: false,
+      });
+    });
+  }
 
   return (
     <>
@@ -74,39 +96,30 @@ export default function StationDetail({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-5">
-          <StationStatusBadge station={station} />
-          <ActionsMenu
-            label={`Actions for ${station.name}`}
-            trigger="button"
-            actions={actionsFor(station, { includeView: false })}
-          />
+        <div className="flex flex-wrap items-center gap-3 md:justify-end md:gap-5">
+          <MetricsPeriodPicker metrics={metrics} onChange={selectPeriod} />
+          <div className="flex shrink-0 items-center gap-3 md:gap-5">
+            <StationStatusBadge station={station} />
+            <ActionsMenu
+              label={`Actions for ${station.name}`}
+              trigger="button"
+              actions={actionsFor(station, { detail: true })}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="mt-10 grid grid-cols-2 gap-3 md:gap-5 lg:grid-cols-4">
-        <StatCard
-          label="Today's Sales"
-          value={stats.todaySales ? formatNairaCompact(stats.todaySales) : "0"}
-          trend={stats.todaySalesTrend}
-          comparison="vs yesterday"
-        />
-        <StatCard
-          label="Today's Orders"
-          value={formatCount(stats.todayOrders)}
-          trend={stats.todayOrdersTrend}
-          comparison="vs yesterday"
-        />
-        <StatCard
-          label="Sales this month"
-          value={formatNairaCompact(stats.monthSales)}
-          trend={stats.monthSalesTrend}
-        />
-        <StatCard
-          label="Orders this month"
-          value={formatCount(stats.monthOrders)}
-          trend={stats.monthOrdersTrend}
-        />
+      <div className="relative flow-root">
+        {isPending && (
+          <p role="status" className="text-grey-800 absolute top-2 right-0 text-sm">
+            Updating station figures…
+          </p>
+        )}
+        <div aria-busy={isPending}>
+          <Suspense fallback={<FiguresSkeleton station />}>
+            <StationFigures metrics={metrics} />
+          </Suspense>
+        </div>
       </div>
 
       {hasActivity && <OrdersTable orders={orders} />}
@@ -139,6 +152,50 @@ export default function StationDetail({
 
       {dialogs}
     </>
+  );
+}
+
+function StationFigures({ metrics }: Pick<StationDetailProps, "metrics">) {
+  const result = use(metrics);
+  if (!result.success) {
+    return (
+      <LoadError
+        title="We couldn't load this station's figures"
+        message={result.message}
+      />
+    );
+  }
+
+  const figures = result.data;
+  const { todaySales, todayOrders } = figures;
+  return (
+    <div className="mt-10 flex flex-col gap-5">
+      <div className="grid grid-cols-2 gap-3 md:gap-5 lg:grid-cols-4">
+        <StatCard
+          label="Today's Sales"
+          value={todaySales ? formatNairaCompact(todaySales.value) : "—"}
+          trend={todaySales?.trend}
+          comparison="vs yesterday"
+        />
+        <StatCard
+          label="Today's Orders"
+          value={todayOrders ? formatCount(todayOrders.value) : "—"}
+          trend={todayOrders?.trend}
+          comparison="vs yesterday"
+        />
+        <StatCard
+          label="Sales this month"
+          value={formatNairaCompact(figures.salesThisMonth.value)}
+          trend={figures.salesThisMonth.trend}
+        />
+        <StatCard
+          label="Orders this month"
+          value={formatCount(figures.ordersThisMonth.value)}
+          trend={figures.ordersThisMonth.trend}
+        />
+      </div>
+      <DashboardTrends metrics={figures} stationOverview />
+    </div>
   );
 }
 

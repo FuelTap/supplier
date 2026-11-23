@@ -30,7 +30,7 @@ Also fix contradictory commit examples in CONTRIBUTING.MD: several “bad” exa
 - Run `pnpm install` to install dependencies, `pnpm dev` for development, `pnpm build` for production validation, and `pnpm lint` for lint checks. No test script currently exists; record manual checks for affected flows.
 - Supplier route layouts use server-side `requireAccess("supplier")`; manager routes use `requireAccess("manager")`. Verified profile roles determine access. Any manager data API must also verify the assigned station on the server; never trust a client station ID.
 - `/sub/inventory` currently uses in-memory preview state, starting empty. Add, edit, remove, and availability changes do not call the backend and reset on refresh or unmount. `/sub/inventory?add=true` opens the reusable Add Product dialog from any link. Supplier inventory continues using its existing API reads.
-- Supplier dashboard filters use `month`, `year`, and `stationId` URL parameters and refetch server metrics. The API period initializes the month/year picker; absent filters use the backend default. Null trend entries render `/empty.png` in the fixed-height chart area.
+- The supplier dashboard uses `month` and `year` URL filters. Choosing a station opens `/stations/[id]` with those filters. Station detail uses the same dashboard API with the supplier-owned station ID. The API period initializes the month/year picker, with absent filters using the backend default. Both pages show `/empty.png` in the fixed-height chart area when all trend entries are null.
 - Never commit secrets or expose session tokens. Keep `ADMIN_MOCK_AUTH` restricted to local development.
 
 ## Context7 documentation

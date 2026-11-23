@@ -10,29 +10,33 @@ import {
 } from "@/components/ui/chart";
 import { formatNairaCompact } from "@/components/admin/ui/format";
 import type { FuelTrendPoint, StatValue } from "@/lib/server/admin/types";
-import { fuelChartConfig, fuelKeys } from "./chart-config";
+import { fuelChartConfig, getFuelTrend, type FuelFilter } from "./chart-config";
 import TrendCard from "./TrendCard";
 
 export default function SalesTrendChart({
   total,
   data,
   monthLabel,
+  title = "Sales Trend",
+  fuel = "all",
+  controls,
 }: {
   total: StatValue;
   data: FuelTrendPoint[];
   monthLabel: string;
+  title?: string;
+  fuel?: FuelFilter;
+  controls?: React.ReactNode;
 }) {
-  const visibleFuels = fuelKeys.filter(
-    (fuel) => fuel !== "other" || data.some((point) => point.other !== 0),
-  );
+  const series = getFuelTrend(total, data, fuel);
 
   return (
     <TrendCard
-      title="Sales Trend"
-      value={formatNairaCompact(total.value)}
-      trend={total.trend}
+      title={title}
+      value={formatNairaCompact(series.total.value)}
+      trend={series.total.trend}
       isEmpty={data.length === 0}
-      emptyBackdrop={null}
+      controls={controls}
     >
       <ChartContainer config={fuelChartConfig} className="h-full w-full aspect-auto">
         <AreaChart
@@ -77,7 +81,7 @@ export default function SalesTrendChart({
             verticalAlign="top"
             content={<ChartLegendContent className="justify-start pb-4 text-[10px] sm:text-xs" />}
           />
-          {visibleFuels.map((fuel) => (
+          {series.keys.map((fuel) => (
             <Area
               key={fuel}
               dataKey={fuel}

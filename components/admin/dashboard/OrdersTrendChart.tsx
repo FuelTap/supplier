@@ -10,29 +10,33 @@ import {
 } from "@/components/ui/chart";
 import { formatCount } from "@/components/admin/ui/format";
 import type { FuelTrendPoint, StatValue } from "@/lib/server/admin/types";
-import { fuelChartConfig, fuelKeys } from "./chart-config";
+import { fuelChartConfig, getFuelTrend, type FuelFilter } from "./chart-config";
 import TrendCard from "./TrendCard";
 
 export default function OrdersTrendChart({
   total,
   data,
   monthLabel,
+  title = "Orders Trend",
+  fuel = "all",
+  controls,
 }: {
   total: StatValue;
   data: FuelTrendPoint[];
   monthLabel: string;
+  title?: string;
+  fuel?: FuelFilter;
+  controls?: React.ReactNode;
 }) {
-  const visibleFuels = fuelKeys.filter(
-    (fuel) => fuel !== "other" || data.some((point) => point.other !== 0),
-  );
+  const series = getFuelTrend(total, data, fuel);
 
   return (
     <TrendCard
-      title="Orders Trend"
-      value={formatCount(total.value)}
-      trend={total.trend}
+      title={title}
+      value={formatCount(series.total.value)}
+      trend={series.total.trend}
       isEmpty={data.length === 0}
-      emptyBackdrop={null}
+      controls={controls}
     >
       <ChartContainer
         config={fuelChartConfig}
@@ -88,7 +92,7 @@ export default function OrdersTrendChart({
               <ChartLegendContent className="justify-start pb-4 text-[10px] sm:text-xs" />
             }
           />
-          {visibleFuels.map((fuel) => (
+          {series.keys.map((fuel) => (
             <Bar
               key={fuel}
               dataKey={fuel}

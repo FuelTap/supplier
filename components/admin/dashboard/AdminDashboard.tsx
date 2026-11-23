@@ -2,31 +2,32 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, use, useEffect, useTransition } from "react";
 import { markSetupCompletionShown } from "@/lib/server/admin/dashboard";
+import { dashboardPeriodHref } from "@/lib/helpers/dashboard-period";
 import type {
   DashboardMetrics,
+  QueryResult,
   SetupStatus,
 } from "@/lib/server/admin/types";
-import MonthYearPill, { type MonthYear } from "@/components/admin/ui/MonthYearPill";
+import type { MonthYear } from "@/components/admin/ui/MonthYearPill";
 import FilterPill from "@/components/admin/ui/FilterPill";
 import LoadError from "@/components/admin/ui/LoadError";
 import PageHeading from "@/components/admin/ui/PageHeading";
 import ProcessingOverlay from "@/components/admin/ui/ProcessingOverlay";
 import { primaryPillClass } from "@/components/admin/ui/PillInput";
+import { FiguresSkeleton } from "@/components/admin/ui/SupplierSkeletons";
 import AdminSetupChecklist from "./AdminSetupChecklist";
 import AdminStatsRow from "./AdminStatsRow";
-import OrdersTrendChart from "./OrdersTrendChart";
-import SalesTrendChart from "./SalesTrendChart";
+import DashboardTrends from "./DashboardTrends";
+import MetricsPeriodPicker from "./MetricsPeriodPicker";
 import TopStationsTable from "./TopStationsTable";
 
 interface Props {
   companyName: string;
   setup: SetupStatus;
-  metrics: DashboardMetrics | null;
-  // Why `metrics` is null, when it failed to load.
-  metricsError: string | null;
+  metrics: Promise<QueryResult<DashboardMetrics>>;
   stations: { id: string; name: string }[];
 }
 
@@ -36,7 +37,6 @@ export default function AdminDashboard({
   companyName,
   setup,
   metrics,
-  metricsError,
   stations,
 }: Props) {
   const router = useRouter();
@@ -72,7 +72,6 @@ export default function AdminDashboard({
     <FullDashboard
       companyName={companyName}
       metrics={metrics}
-      metricsError={metricsError}
       stations={stations}
     />
   );
@@ -81,61 +80,47 @@ export default function AdminDashboard({
 function FullDashboard({
   companyName,
   metrics,
-  metricsError,
   stations,
 }: Omit<Props, "setup">) {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
-  const stationId = searchParams.get("stationId") ?? "all";
 
-  function updateFilters(changes: Record<string, string | null>) {
-    const params = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(changes)) {
-      if (value === null) params.delete(key);
-      else params.set(key, value);
-    }
+  function selectPeriod(period: MonthYear) {
     startTransition(() => {
-      const query = params.toString();
-      router.push(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+      router.push(dashboardPeriodHref("/dashboard", period), { scroll: false });
     });
   }
 
-  function selectPeriod(period: MonthYear) {
-    updateFilters({ month: String(period.month), year: String(period.year) });
+  function selectStation(id: string) {
+    if (id === "all") return;
+    startTransition(() => {
+      router.push(dashboardPeriodHref(`/stations/${encodeURIComponent(id)}`, {
+        month: searchParams.get("month") ?? undefined,
+        year: searchParams.get("year") ?? undefined,
+      }));
+    });
   }
-
-  const monthLabel = metrics
-    ? new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" }).format(
-        new Date(Date.UTC(metrics.period.year, metrics.period.month - 1, 1)),
-      )
-    : "";
 
   const stationOptions = [
     { label: "All Stations", value: "all" },
     ...stations.map((s) => ({ label: s.name, value: s.id })),
   ];
-  const stationLabel =
-    stationOptions.find((o) => o.value === stationId)?.label ?? "All Stations";
 
   return (
     <>
       <PageHeading
         title="Dashboard"
-        subtitle={`${companyName} · ${stationLabel.replace(/^TotalEnergies - /, "")}`}
+        subtitle={`${companyName} · All Stations`}
         subtitleTone="yellow"
       >
         <FilterPill
           label="Stations"
           options={stationOptions}
-          value={stationId}
-          onChange={(id) => updateFilters({ stationId: id === "all" ? null : id })}
+          value="all"
+          onChange={selectStation}
         />
-        <MonthYearPill
-          value={metrics?.period ?? null}
-          onChange={selectPeriod}
-        />
+        <MetricsPeriodPicker metrics={metrics} onChange={selectPeriod} />
         <Link
           href="/stations/new"
           className={`${primaryPillClass} w-auto! gap-2 px-6`}
@@ -145,39 +130,44 @@ function FullDashboard({
         </Link>
       </PageHeading>
 
-      {isPending && <p role="status" className="mt-5 text-sm text-grey-800">Updating dashboard…</p>}
-      {metrics ? (
-        <div aria-busy={isPending} className="mt-10 flex flex-col gap-5">
-          <AdminStatsRow metrics={metrics} />
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <SalesTrendChart
-              total={metrics.revenueTotal}
-              monthLabel={monthLabel}
-              data={metrics.revenueTrend}
-            />
-            <OrdersTrendChart
-              total={metrics.ordersTotal}
-              monthLabel={monthLabel}
-              data={metrics.ordersTrend}
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <TopStationsTable
-              title="Top-performing stations"
-              stations={metrics.topStations}
-            />
-            <TopStationsTable
-              title="Lowest-performing stations"
-              stations={metrics.lowestStations}
-            />
-          </div>
+      <div className="relative flow-root">
+        {isPending && <p role="status" className="text-grey-800 absolute top-2 right-0 text-sm">Updating dashboard…</p>}
+        <div aria-busy={isPending}>
+          <Suspense fallback={<FiguresSkeleton />}>
+            <DashboardFigures metrics={metrics} />
+          </Suspense>
         </div>
-      ) : (
-        <LoadError
-          title="We couldn't load your dashboard figures"
-          message={metricsError ?? "Please try again."}
-        />
-      )}
+      </div>
     </>
+  );
+}
+
+function DashboardFigures({ metrics }: Pick<Props, "metrics">) {
+  const result = use(metrics);
+  if (!result.success) {
+    return (
+      <LoadError
+        title="We couldn't load your dashboard figures"
+        message={result.message}
+      />
+    );
+  }
+
+  const figures = result.data;
+  return (
+    <div className="mt-10 flex flex-col gap-5">
+      <AdminStatsRow metrics={figures} />
+      <DashboardTrends metrics={figures} />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <TopStationsTable
+          title="Top-performing stations"
+          stations={figures.topStations}
+        />
+        <TopStationsTable
+          title="Lowest-performing stations"
+          stations={figures.lowestStations}
+        />
+      </div>
+    </div>
   );
 }

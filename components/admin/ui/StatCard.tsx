@@ -13,7 +13,7 @@ export default function StatCard({
   label,
   value,
   trend,
-  comparison = "vs last Month",
+  comparison = "vs last month",
 }: Props) {
   const showTrend = trend !== undefined;
   const isDown = (trend ?? 0) < 0;

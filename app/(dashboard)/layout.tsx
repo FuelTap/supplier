@@ -2,8 +2,8 @@ import { Suspense } from "react";
 import Header from "@/components/admin/Header";
 import { AuthProvider } from "@/context/AuthProvider";
 import { requireAccess } from "@/lib/server/access";
-import PageLoading from "@/components/admin/ui/PageLoading";
 import SoftGlow from "@/components/admin/ui/SoftGlow";
+import { SupplierLayoutSkeleton } from "@/components/admin/ui/SupplierSkeletons";
 
 export default function AdminDashboardLayout({
   children,
@@ -13,7 +13,7 @@ export default function AdminDashboardLayout({
   return (
     <div className="relative isolate min-h-dvh bg-[#F8F9FB]">
       <SoftGlow className="opacity-40" />
-      <Suspense fallback={<PageLoading />}>
+      <Suspense fallback={<SupplierLayoutSkeleton />}>
         <DashboardContent>{children}</DashboardContent>
       </Suspense>
     </div>
