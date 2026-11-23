@@ -1,18 +1,21 @@
 import "server-only";
 
+import { lagosCalendarDate } from "@/lib/helpers/dashboard-period";
 import type {
   Company,
+  DashboardFilters,
   DashboardMetrics,
   Invite,
   Manager,
   Station,
   StationOrder,
   StationStats,
+  StationView,
 } from "./types";
 
 // Demo data for local development without a backend (ADMIN_MOCK_AUTH=true;
 // see session.ts). With the real API, it still supplies what the API can't
-// yet: invitations, KYB status, station orders and the dashboard's trends.
+// yet: invitations and KYB status.
 //
 // Switch the scenario to preview the designs:
 // - "new-user": brand-new supplier, setup checklist at 1/4, everything empty.
@@ -398,18 +401,41 @@ export function wait(ms = MOCK_DELAY_MS) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function buildDashboardMetrics(store: Store): DashboardMetrics {
-  const now = new Date();
+export function buildDashboardMetrics(
+  store: Store,
+  filters: DashboardFilters,
+  station?: StationView,
+): DashboardMetrics {
+  const current = lagosCalendarDate();
   const period = {
-    month: Number(new Intl.DateTimeFormat("en-GB", {
-      month: "numeric",
-      timeZone: "Africa/Lagos",
-    }).format(now)),
-    year: Number(new Intl.DateTimeFormat("en-GB", {
-      year: "numeric",
-      timeZone: "Africa/Lagos",
-    }).format(now)),
+    month: filters.month ?? current.month,
+    year: filters.year ?? current.year,
   };
+  if (station) {
+    const stats = period.month === current.month && period.year === current.year
+      ? station.stats
+      : emptyStats;
+    const sales = { value: stats.monthSales, trend: stats.monthSalesTrend };
+    const orders = { value: stats.monthOrders, trend: stats.monthOrdersTrend };
+    const trendPoints = (total: number) =>
+      total === 0 ? [] : [
+        { day: 1, petrol: Math.floor(total / 2), diesel: 0, cookingGas: 0, other: 0 },
+        { day: 2, petrol: Math.ceil(total / 2), diesel: 0, cookingGas: 0, other: 0 },
+      ];
+    return {
+      period,
+      salesThisMonth: sales,
+      ordersThisMonth: orders,
+      pendingOrders: { value: station.outstandingOrders },
+      activeStations: { value: station.displayStatus === "active" ? 1 : 0 },
+      revenueTotal: sales,
+      revenueTrend: trendPoints(sales.value),
+      ordersTotal: orders,
+      ordersTrend: trendPoints(orders.value),
+      topStations: [],
+      lowestStations: [],
+    };
+  }
   const activeStations = store.stations.filter(
     (s) =>
       !s.deactivated &&

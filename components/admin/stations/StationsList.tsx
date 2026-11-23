@@ -8,7 +8,6 @@ import ActionsMenu from "@/components/admin/ui/ActionsMenu";
 import EmptyIllustration from "@/components/admin/ui/EmptyIllustration";
 import FilterPill from "@/components/admin/ui/FilterPill";
 import type { ManagerOption } from "@/components/admin/ui/ManagerPicker";
-import PageHeading from "@/components/admin/ui/PageHeading";
 import Pagination, { paginate } from "@/components/admin/ui/Pagination";
 import { primaryPillClass } from "@/components/admin/ui/PillInput";
 import SearchBox from "@/components/admin/ui/SearchBox";
@@ -67,11 +66,6 @@ export default function StationsList({
 
   return (
     <>
-      <PageHeading
-        title="Stations"
-        subtitle="Manage and scale your retail outlets. Track managers, view live statuses, and open new branches."
-      />
-
       <div className="mt-10 grid grid-cols-2 gap-3 md:gap-5 lg:grid-cols-4">
         <StatCard label="Total Stations" value={String(stats.total)} trend={0} />
         <StatCard label="Active Stations" value={String(stats.active)} trend={0} />

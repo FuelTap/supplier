@@ -88,14 +88,12 @@ style: fix typos
 ### Bad examples — do NOT do these
 
 ```bash
-Added database                            # missing type, vague
-User authentication and authorization     # missing type
-Update README.md                          # missing type, too generic
-Fixes to errors/warnings before deployment # missing type, vague
+Add database connection                   # missing type and colon
 fix resolve build failure                 # missing colon
-feature: add file uploads                  # unsupported type
+fix:resolve build failure                 # missing space after colon
+feature: add file uploads                 # unsupported type
+docs:                                     # missing description
 chore: update dependencies and configuration across all workspaces # description exceeds 50 characters
-
 ```
 
 ### PR size

@@ -2,11 +2,7 @@
 
 import { stationSchema } from "@/lib/validators/adminSchemas";
 import { assignLocally, loadAccount, localChanges } from "./account";
-import {
-  createApiStation,
-  fetchStationInventory,
-  fetchStationPerformance,
-} from "./api";
+import { createApiStation } from "./api";
 import { getStore, wait } from "./mock";
 import { isAdminMockAuth } from "./session";
 import type {
@@ -22,9 +18,9 @@ function toView(station: Station, managers: Manager[]): StationView {
   const manager = managers.find((m) => m.id === station.managerId);
 
   let displayStatus: StationView["displayStatus"];
-  if (!manager) displayStatus = "unassigned";
+  if (station.deactivated) displayStatus = "inactive";
+  else if (!manager) displayStatus = "unassigned";
   else if (
-    station.deactivated ||
     manager.status !== "active" ||
     station.complianceStatus !== "verified"
   )
@@ -62,30 +58,7 @@ export async function getStation(
   const station = account.data.stations.find((s) => s.id === id);
   if (!station) return { success: true, data: null };
 
-  const view = toView(station, account.data.managers);
-  if (isAdminMockAuth()) return { success: true, data: view };
-
-  const accountId = station.accountId ?? station.id;
-  const [inventory, performance] = await Promise.all([
-    fetchStationInventory(accountId),
-    fetchStationPerformance(accountId),
-  ]);
-  if (!inventory.success) return inventory;
-  if (!performance.success) return performance;
-
-  return {
-    success: true,
-    data: {
-      ...view,
-      products: inventory.data.map((i) => i.product),
-      // The API reports running totals, with no daily figures or trends yet.
-      stats: {
-        ...view.stats,
-        monthSales: performance.data.sales,
-        monthOrders: performance.data.orderCount,
-      },
-    },
-  };
+  return { success: true, data: toView(station, account.data.managers) };
 }
 
 // The API only lets a station's own account read its orders, so the supplier

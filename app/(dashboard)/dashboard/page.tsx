@@ -1,9 +1,11 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import LoadError from "@/components/admin/ui/LoadError";
-import PageLoading from "@/components/admin/ui/PageLoading";
 import { Metadata } from "next";
+import { redirect } from "next/navigation";
 import AdminDashboard from "@/components/admin/dashboard/AdminDashboard";
+import { DashboardSkeleton } from "@/components/admin/ui/SupplierSkeletons";
+import { dashboardPeriodHref } from "@/lib/helpers/dashboard-period";
 import {
   getCompany,
   getDashboardActualMetrics,
@@ -27,7 +29,7 @@ export default function AdminDashboardPage({
   searchParams: Promise<DashboardSearchParams>;
 }) {
   return (
-    <Suspense fallback={<PageLoading />}>
+    <Suspense fallback={<DashboardSkeleton />}>
       <AdminDashboardContent searchParams={searchParams} />
     </Suspense>
   );
@@ -40,18 +42,17 @@ async function AdminDashboardContent({
 }) {
   // Account data is per request, so it's read at request time, not build time.
   await connection();
-  const params = await searchParams;
-  if ([params.month, params.year, params.stationId].some(Array.isArray)) {
+  const { month, year, stationId } = await searchParams;
+  if (Array.isArray(month) || Array.isArray(year) || Array.isArray(stationId)) {
     return <LoadError message="Choose one month, year and station." />;
   }
-  const [company, setup, metrics, stations] = await Promise.all([
+  // Keep existing station-filtered dashboard links working.
+  if (stationId && stationId !== "all") {
+    redirect(dashboardPeriodHref(`/stations/${encodeURIComponent(stationId)}`, { month, year }));
+  }
+  const [company, setup, stations] = await Promise.all([
     getCompany(),
     getSetupStatus(),
-    getDashboardActualMetrics({
-      month: params.month === undefined ? undefined : Number(params.month),
-      year: params.year === undefined ? undefined : Number(params.year),
-      stationId: params.stationId as string | undefined,
-    }),
     getStations(),
   ]);
 
@@ -63,8 +64,10 @@ async function AdminDashboardContent({
     <AdminDashboard
       companyName={company.success ? company.data.name : "Your company"}
       setup={setup.data}
-      metrics={metrics.success ? metrics.data : null}
-      metricsError={metrics.success ? null : metrics.message}
+      metrics={getDashboardActualMetrics({
+        month: month === undefined ? undefined : Number(month),
+        year: year === undefined ? undefined : Number(year),
+      })}
       stations={stations.data.filter((s) => !s.deactivated).map((s) => ({ id: s.id, name: s.name }))}
     />
   );

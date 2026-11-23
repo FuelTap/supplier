@@ -29,14 +29,14 @@ export default function MonthYearPill({
 
   return (
     <div className="flex h-12 shrink-0 items-center rounded-full border border-gray-100 bg-white">
-      <span className="text-grey-800 flex h-full items-center border-r border-gray-100 px-4 text-xs whitespace-nowrap">
+      <span className="text-grey-800 hidden h-full items-center border-r border-gray-100 px-4 text-xs whitespace-nowrap sm:flex">
         Month
       </span>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           aria-label="Choose month and year"
           disabled={!value}
-          className="flex h-full cursor-pointer items-center gap-3 rounded-r-full px-4 text-xs font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-full cursor-pointer items-center gap-3 rounded-full px-4 text-xs font-medium text-black disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-l-none"
         >
           {value ? `${months[value.month - 1]} ${value.year}` : "Select month"}
           <CalendarDays size={16} aria-hidden="true" />

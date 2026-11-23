@@ -178,18 +178,6 @@ function toPerformance(raw: unknown): Performance {
   };
 }
 
-// Takes the station's account id (Station.accountId), not its id.
-export async function fetchStationPerformance(
-  accountId: string,
-): Promise<QueryResult<Performance>> {
-  const result = await call<unknown>(
-    `/api/v1/supplier/stations/${encodeURIComponent(accountId)}/performance`,
-  );
-  if (!result.success) return result;
-  const data = result.data as { totals?: unknown } | undefined;
-  return { success: true, data: toPerformance(data?.totals ?? data) };
-}
-
 export type SupplierPerformance = {
   totals: Performance;
   stations: (Performance & { accountId: string; name: string })[];

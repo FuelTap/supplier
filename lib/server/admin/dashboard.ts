@@ -14,6 +14,7 @@ import type {
   FuelTrendPoint,
   QueryResult,
   SetupStatus,
+  StationView,
 } from "./types";
 
 export async function getCompany(): Promise<QueryResult<Company>> {
@@ -72,7 +73,7 @@ type SupplierDashboard = {
     orders: (FuelTrendPoint | null)[] | null;
     currency: string;
   };
-  stations: {
+  stations?: {
     topPerforming: SupplierDashboardStation[];
     lowestPerforming: SupplierDashboardStation[];
   };
@@ -94,16 +95,18 @@ export async function getDashboardActualMetrics(
     return { success: false, message: "Choose a valid month, year and station." };
   }
 
+  let station: StationView | undefined;
   if (filters.stationId) {
     const stations = await getStations();
     if (!stations.success) return stations;
-    if (!stations.data.some((station) => station.id === filters.stationId && !station.deactivated)) {
+    station = stations.data.find((station) => station.id === filters.stationId);
+    if (!station) {
       return { success: false, message: "This station is unavailable." };
     }
   }
 
   if (isAdminMockAuth()) {
-    return { success: true, data: buildDashboardMetrics(getStore()) };
+    return { success: true, data: buildDashboardMetrics(getStore(), filters, station) };
   }
 
   const query = new URLSearchParams();
@@ -113,7 +116,6 @@ export async function getDashboardActualMetrics(
   const suffix = query.size ? `?${query}` : "";
   const result = await call<SupplierDashboard>(`/api/v1/supplier/dashboard${suffix}`);
   if (!result.success) return result;
-  console.log(result);
 
   const { period, summary, trends, stations } = result.data;
   const sales = {
@@ -141,11 +143,11 @@ export async function getDashboardActualMetrics(
       revenueTrend: (trends.sales ?? []).filter((point): point is FuelTrendPoint => point !== null),
       ordersTotal: orders,
       ordersTrend: (trends.orders ?? []).filter((point): point is FuelTrendPoint => point !== null),
-      topStations: stations.topPerforming.map((station) => ({
+      topStations: (stations?.topPerforming ?? []).map((station) => ({
         name: station.stationName,
         revenue: station.sales,
       })),
-      lowestStations: stations.lowestPerforming.map((station) => ({
+      lowestStations: (stations?.lowestPerforming ?? []).map((station) => ({
         name: station.stationName,
         revenue: station.sales,
       })),

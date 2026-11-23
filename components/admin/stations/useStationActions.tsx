@@ -52,7 +52,7 @@ export function useStationActions(managers: ManagerOption[]) {
 
   function actionsFor(
     station: StationView,
-    { includeView = true } = {},
+    { detail = false } = {},
   ): MenuAction[] {
     const view: MenuAction = {
       label: "View Station",
@@ -81,13 +81,13 @@ export function useStationActions(managers: ManagerOption[]) {
     };
 
     let actions: MenuAction[];
-    if (station.deactivated) actions = [view, reassign, activate];
+    if (station.deactivated) return detail ? [activate] : [view, reassign, activate];
     else if (!station.manager) actions = [reassign, deactivate];
     // Waiting for the invited manager to accept.
     else if (station.manager.status === "pending") actions = [deactivate];
     else actions = [view, reassign, deactivate];
 
-    return includeView ? actions : actions.filter((a) => a !== view);
+    return detail ? actions.filter((a) => a !== view) : actions;
   }
 
   const close = (open: boolean) => {

@@ -144,6 +144,11 @@ export type DashboardMetrics = {
   lowestStations: { name: string; revenue: number }[];
 };
 
+export type StationDashboardMetrics = DashboardMetrics & {
+  todaySales: StatValue | null;
+  todayOrders: StatValue | null;
+};
+
 export type SetupStatus = {
   kybSubmitted: boolean;
   hasManager: boolean;
