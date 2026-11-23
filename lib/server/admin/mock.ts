@@ -399,6 +399,17 @@ export function wait(ms = MOCK_DELAY_MS) {
 }
 
 export function buildDashboardMetrics(store: Store): DashboardMetrics {
+  const now = new Date();
+  const period = {
+    month: Number(new Intl.DateTimeFormat("en-GB", {
+      month: "numeric",
+      timeZone: "Africa/Lagos",
+    }).format(now)),
+    year: Number(new Intl.DateTimeFormat("en-GB", {
+      year: "numeric",
+      timeZone: "Africa/Lagos",
+    }).format(now)),
+  };
   const activeStations = store.stations.filter(
     (s) =>
       !s.deactivated &&
@@ -411,6 +422,7 @@ export function buildDashboardMetrics(store: Store): DashboardMetrics {
   if (store.scenario === "new-user") {
     const zero = { value: 0, trend: 0 };
     return {
+      period,
       salesThisMonth: zero,
       ordersThisMonth: zero,
       pendingOrders: zero,
@@ -424,22 +436,31 @@ export function buildDashboardMetrics(store: Store): DashboardMetrics {
     };
   }
 
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan"];
   const revenue = [0.6, 0.75, 1.5, 1.4, 1.25, 2.05, 2.05, 2.9, 2.9, 3.1, 3.5, 3.8, 4.2];
   const orders = [5, 33, 100, 59, 23, 41, 78, 35, 50, 86, 51, 41, 9];
 
   return {
+    period,
     salesThisMonth: { value: 2_004_975, trend: 1 },
     ordersThisMonth: { value: 1_284, trend: 1 },
     pendingOrders: { value: 37, trend: 1 },
     activeStations: { value: activeStations, trend: 1 },
     revenueTotal: { value: 4_800_000, trend: 12 },
-    revenueTrend: months.map((label, i) => ({
-      label,
-      value: Math.round(revenue[i] * 1_000_000),
+    revenueTrend: revenue.map((value, i) => ({
+      day: i + 1,
+      petrol: Math.round(value * 1_000_000),
+      diesel: 0,
+      cookingGas: 0,
+      other: 0,
     })),
     ordersTotal: { value: 386, trend: 6 },
-    ordersTrend: months.map((label, i) => ({ label, value: orders[i] })),
+    ordersTrend: orders.map((value, i) => ({
+      day: i + 1,
+      petrol: value,
+      diesel: 0,
+      cookingGas: 0,
+      other: 0,
+    })),
     topStations: [
       { name: "Victoria Island", revenue: 980_000 },
       { name: "Lekki Phase 1", revenue: 875_000 },

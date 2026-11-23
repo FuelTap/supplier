@@ -114,19 +114,32 @@ export type InventoryItem = {
   lastUpdated: string; // ISO date
 };
 
-export type TrendPoint = { label: string; value: number };
+export type FuelTrendPoint = {
+  day: number;
+  petrol: number;
+  diesel: number;
+  cookingGas: number;
+  other: number;
+};
 
-export type StatValue = { value: number; trend: number };
+export type StatValue = { value: number; trend?: number };
+
+export type DashboardFilters = {
+  month?: number;
+  year?: number;
+  stationId?: string;
+};
 
 export type DashboardMetrics = {
+  period: { month: number; year: number };
   salesThisMonth: StatValue;
   ordersThisMonth: StatValue;
   pendingOrders: StatValue;
   activeStations: StatValue;
   revenueTotal: StatValue;
-  revenueTrend: TrendPoint[];
+  revenueTrend: FuelTrendPoint[];
   ordersTotal: StatValue;
-  ordersTrend: TrendPoint[];
+  ordersTrend: FuelTrendPoint[];
   topStations: { name: string; revenue: number }[];
   lowestStations: { name: string; revenue: number }[];
 };

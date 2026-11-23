@@ -2,14 +2,14 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useTransition } from "react";
 import { markSetupCompletionShown } from "@/lib/server/admin/dashboard";
 import type {
   DashboardMetrics,
   SetupStatus,
 } from "@/lib/server/admin/types";
-import DateRangePill, { type DateRange } from "@/components/admin/ui/DateRangePill";
+import MonthYearPill, { type MonthYear } from "@/components/admin/ui/MonthYearPill";
 import FilterPill from "@/components/admin/ui/FilterPill";
 import LoadError from "@/components/admin/ui/LoadError";
 import PageHeading from "@/components/admin/ui/PageHeading";
@@ -18,7 +18,7 @@ import { primaryPillClass } from "@/components/admin/ui/PillInput";
 import AdminSetupChecklist from "./AdminSetupChecklist";
 import AdminStatsRow from "./AdminStatsRow";
 import OrdersTrendChart from "./OrdersTrendChart";
-import RevenueTrendChart from "./RevenueTrendChart";
+import SalesTrendChart from "./SalesTrendChart";
 import TopStationsTable from "./TopStationsTable";
 
 interface Props {
@@ -84,8 +84,33 @@ function FullDashboard({
   metricsError,
   stations,
 }: Omit<Props, "setup">) {
-  const [stationId, setStationId] = useState("all");
-  const [range, setRange] = useState<DateRange>({ from: "", to: "" });
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+  const stationId = searchParams.get("stationId") ?? "all";
+
+  function updateFilters(changes: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null) params.delete(key);
+      else params.set(key, value);
+    }
+    startTransition(() => {
+      const query = params.toString();
+      router.push(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+    });
+  }
+
+  function selectPeriod(period: MonthYear) {
+    updateFilters({ month: String(period.month), year: String(period.year) });
+  }
+
+  const monthLabel = metrics
+    ? new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" }).format(
+        new Date(Date.UTC(metrics.period.year, metrics.period.month - 1, 1)),
+      )
+    : "";
 
   const stationOptions = [
     { label: "All Stations", value: "all" },
@@ -105,9 +130,12 @@ function FullDashboard({
           label="Stations"
           options={stationOptions}
           value={stationId}
-          onChange={setStationId}
+          onChange={(id) => updateFilters({ stationId: id === "all" ? null : id })}
         />
-        <DateRangePill value={range} onChange={setRange} />
+        <MonthYearPill
+          value={metrics?.period ?? null}
+          onChange={selectPeriod}
+        />
         <Link
           href="/stations/new"
           className={`${primaryPillClass} w-auto! gap-2 px-6`}
@@ -117,16 +145,19 @@ function FullDashboard({
         </Link>
       </PageHeading>
 
+      {isPending && <p role="status" className="mt-5 text-sm text-grey-800">Updating dashboard…</p>}
       {metrics ? (
-        <div className="mt-10 flex flex-col gap-5">
+        <div aria-busy={isPending} className="mt-10 flex flex-col gap-5">
           <AdminStatsRow metrics={metrics} />
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <RevenueTrendChart
+            <SalesTrendChart
               total={metrics.revenueTotal}
+              monthLabel={monthLabel}
               data={metrics.revenueTrend}
             />
             <OrdersTrendChart
               total={metrics.ordersTotal}
+              monthLabel={monthLabel}
               data={metrics.ordersTrend}
             />
           </div>
