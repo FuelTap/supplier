@@ -15,12 +15,16 @@ import type {
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-async function call<T>(
+export async function call<T>(
   endpoint: string,
   method: Method = "GET",
   body?: unknown,
 ): Promise<QueryResult<T>> {
-  const result = await authenticatedApiRequest<unknown, T>(endpoint, method, body);
+  const result = await authenticatedApiRequest<unknown, T>(
+    endpoint,
+    method,
+    body,
+  );
   if (!result.success) return { success: false, message: result.message };
   return { success: true, data: result.data as T };
 }
@@ -49,7 +53,10 @@ const shortCode = (prefix: string, id: string) =>
 // --- Addresses ---------------------------------------------------------------
 
 function matchState(part: string) {
-  const name = part.replace(/\bstate\b/i, "").trim().toLowerCase();
+  const name = part
+    .replace(/\bstate\b/i, "")
+    .trim()
+    .toLowerCase();
   if (name === "abuja" || name === "federal capital territory") return "FCT";
   return nigerianStateNames.find((s) => s.toLowerCase() === name);
 }
@@ -57,7 +64,10 @@ function matchState(part: string) {
 // The API stores one address string ("12 Admiralty Way, Lekki, Lagos"); the
 // pages show street, city and state separately.
 export function splitAddress(address: string) {
-  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+  const parts = address
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
   const stateIndex = parts.findLastIndex((p) => matchState(p));
   if (stateIndex < 0) return { street: address, city: "", state: "" };
 
@@ -67,7 +77,11 @@ export function splitAddress(address: string) {
     nigerianStates[state].some((c) => c.toLowerCase() === p.toLowerCase()),
   );
   const city =
-    cityIndex >= 0 ? before[cityIndex] : before.length > 1 ? before.at(-1)! : "";
+    cityIndex >= 0
+      ? before[cityIndex]
+      : before.length > 1
+        ? before.at(-1)!
+        : "";
   // Empty when the address is only a city and state, e.g. "Ikeja, Lagos".
   const street = before.filter((p) => p !== city).join(", ");
   return { street, city, state };
@@ -275,7 +289,11 @@ export async function createApiManager(input: {
 
 const products: Record<
   string,
-  { fuelType: InventoryItem["fuelType"]; label: string; unit: StationProduct["unit"] }
+  {
+    fuelType: InventoryItem["fuelType"];
+    label: string;
+    unit: StationProduct["unit"];
+  }
 > = {
   pms: { fuelType: "Petrol", label: "Petrol PMS", unit: "L" },
   petrol: { fuelType: "Petrol", label: "Petrol PMS", unit: "L" },
